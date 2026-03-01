@@ -1,0 +1,11 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/usr/bin/cmake;-P;/app/build/_deps/juce-subbuild/juce-populate-prefix/src/juce-populate-stamp/download-juce-populate.cmake;COMMAND;/usr/bin/cmake;-P;/app/build/_deps/juce-subbuild/juce-populate-prefix/src/juce-populate-stamp/verify-juce-populate.cmake;COMMAND;/usr/bin/cmake;-P;/app/build/_deps/juce-subbuild/juce-populate-prefix/src/juce-populate-stamp/extract-juce-populate.cmake
+source_dir=/app/build/_deps/juce-src
+work_dir=/app/build/_deps
+url(s)=https://github.com/juce-framework/JUCE/archive/refs/tags/7.0.9.zip
+hash=
+no_extract=
