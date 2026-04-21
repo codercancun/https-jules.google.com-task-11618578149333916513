@@ -34,6 +34,10 @@ source/
     ThreeBandEQ.{h,cpp}     Mono 3-band EQ (low shelf + peak + high shelf)
     NESLookAndFeel.{h,cpp}  Palette + typeface + basic label drawing
     NESComponents.{h,cpp}   PowerMeterSlider and NESAButton custom components
+tests/
+    TestsMain.cpp           Console entry point that runs juce::UnitTestRunner
+    ThreeBandEQTests.cpp    Frequency-response tests for the EQ DSP
+.github/workflows/ci.yml    Linux/macOS/Windows build + test matrix
 ```
 
 ## Building
@@ -70,6 +74,22 @@ generated Xcode project or run:
 cmake -B build -G Xcode
 cmake --build build --target NES_EQ_AU NES_EQ_VST3 --config Release
 ```
+
+## Tests
+
+A small `juce::UnitTest` suite exercises the 3-band EQ DSP — checking a flat
+response at 0 dB, that each band boosts the right frequency region and leaves
+others alone, symmetry of boost vs. cut, and stability when `update` is called
+with unchanged gains (the coefficient cache). To build and run locally:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target NES_EQ_Tests -j
+ctest --test-dir build --output-on-failure
+```
+
+CI (`.github/workflows/ci.yml`) runs the full VST3 build + test matrix on
+Ubuntu, macOS and Windows; macOS additionally builds the AU target.
 
 ## Parameters
 

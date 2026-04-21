@@ -86,3 +86,41 @@ target_link_libraries(NES_EQ PRIVATE
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(NES_EQ PRIVATE -Wno-unused-parameter)
 endif()
+
+# ---------------------------------------------------------------------------
+# Tests (console app; built by default, runnable via CTest)
+# ---------------------------------------------------------------------------
+option(NES_EQ_BUILD_TESTS "Build the NES-EQ DSP unit tests" ON)
+
+if(NES_EQ_BUILD_TESTS)
+    enable_testing()
+
+    juce_add_console_app(NES_EQ_Tests
+        PRODUCT_NAME "NES-EQ-Tests"
+    )
+
+    juce_generate_juce_header(NES_EQ_Tests)
+
+    target_sources(NES_EQ_Tests PRIVATE
+        tests/TestsMain.cpp
+        tests/ThreeBandEQTests.cpp
+        source/ThreeBandEQ.cpp
+        source/ThreeBandEQ.h
+    )
+
+    target_compile_definitions(NES_EQ_Tests PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+    )
+
+    target_link_libraries(NES_EQ_Tests PRIVATE
+        juce::juce_core
+        juce::juce_dsp
+        juce::juce_audio_basics
+        PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+    )
+
+    add_test(NAME NES_EQ_Tests COMMAND NES_EQ_Tests)
+endif()
