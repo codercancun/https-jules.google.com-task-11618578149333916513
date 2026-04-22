@@ -149,6 +149,106 @@ public:
                 "shelf boost and cut should be approximately symmetric");
         }
 
+        beginTest ("gain target changes are smoothed, not stepped");
+        {
+            // Drive the low band from 0 dB to +12 dB and verify the boost is
+            // not already in full effect a handful of samples after the
+            // target change. Then verify that after ~100 ms (well past the
+            // default 20 ms ramp) the boost *is* fully in effect.
+            ThreeBandEQ eq;
+
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+
+            const double omega = juce::MathConstants<double>::twoPi * 50.0 / kSampleRate;
+
+            auto runBlock = [&] (juce::AudioBuffer<float>& buffer, double& phase)
+            {
+                auto* data = buffer.getWritePointer (0);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    data[i] = static_cast<float> (std::sin (phase));
+                    phase += omega;
+                    if (phase > juce::MathConstants<double>::twoPi)
+                        phase -= juce::MathConstants<double>::twoPi;
+                }
+                juce::dsp::AudioBlock<float> block_ (buffer);
+                juce::dsp::ProcessContextReplacing<float> ctx (block_);
+                eq.process (ctx);
+            };
+
+            auto rms = [] (const juce::AudioBuffer<float>& buffer)
+            {
+                double sumSq = 0.0;
+                const auto numSamples = buffer.getNumSamples();
+                const auto* data = buffer.getReadPointer (0);
+                for (int i = 0; i < numSamples; ++i)
+                    sumSq += static_cast<double> (data[i]) * data[i];
+                return static_cast<float> (std::sqrt (sumSq / juce::jmax (1, numSamples)));
+            };
+
+            // One short block ( ~3 ms ) immediately after the target change
+            // — the smoother should still be well below full +12 dB.
+            eq.update (12.0f, 0.0f, 0.0f);
+
+            juce::AudioBuffer<float> shortBuffer (1, 128);
+            double phase = 0.0;
+            runBlock (shortBuffer, phase);
+
+            const auto earlyGainDb = juce::Decibels::gainToDecibels (rms (shortBuffer) / kUnitSineRms);
+            expectLessThan (earlyGainDb, 8.0f,
+                "smoothed gain should not have reached +12 dB after only ~3 ms");
+
+            // Now run enough samples ( > 100 ms ) for the smoother to be at
+            // target, and verify the full boost is in effect.
+            juce::AudioBuffer<float> longBuffer (1, kBlockSize);
+            for (int b = 0; b < kNumBlocks; ++b)
+                runBlock (longBuffer, phase);
+
+            const auto settledGainDb = juce::Decibels::gainToDecibels (rms (longBuffer) / kUnitSineRms);
+            expectGreaterThan (settledGainDb, 10.0f,
+                "after the smoother has settled, full +12 dB low-shelf boost should be audible at 50 Hz");
+        }
+
+        beginTest ("snap() immediately applies gains without ramp");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+
+            eq.snap (12.0f, 0.0f, 0.0f);
+
+            const double omega = juce::MathConstants<double>::twoPi * 50.0 / kSampleRate;
+            juce::AudioBuffer<float> buffer (1, 256);
+            auto* data = buffer.getWritePointer (0);
+            double phase = 0.0;
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                data[i] = static_cast<float> (std::sin (phase));
+                phase += omega;
+                if (phase > juce::MathConstants<double>::twoPi)
+                    phase -= juce::MathConstants<double>::twoPi;
+            }
+            juce::dsp::AudioBlock<float> block_ (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx (block_);
+            eq.process (ctx);
+
+            double sumSq = 0.0;
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                sumSq += static_cast<double> (data[i]) * data[i];
+            const auto rmsVal = static_cast<float> (std::sqrt (sumSq / buffer.getNumSamples()));
+            const auto gainDb = juce::Decibels::gainToDecibels (rmsVal / kUnitSineRms);
+
+            expectGreaterThan (gainDb, 10.0f,
+                "snap() should skip the smoother and apply the full +12 dB boost immediately");
+        }
+
         beginTest ("update is a no-op when gains are unchanged (coefficient cache)");
         {
             ThreeBandEQ eq;

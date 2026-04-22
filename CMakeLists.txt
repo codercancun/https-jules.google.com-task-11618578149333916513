@@ -54,6 +54,8 @@ target_sources(NES_EQ PRIVATE
     source/PluginEditor.h
     source/ThreeBandEQ.cpp
     source/ThreeBandEQ.h
+    source/BypassCrossfader.cpp
+    source/BypassCrossfader.h
     source/NESLookAndFeel.cpp
     source/NESLookAndFeel.h
     source/NESComponents.cpp
@@ -104,8 +106,11 @@ if(NES_EQ_BUILD_TESTS)
     target_sources(NES_EQ_Tests PRIVATE
         tests/TestsMain.cpp
         tests/ThreeBandEQTests.cpp
+        tests/BypassCrossfaderTests.cpp
         source/ThreeBandEQ.cpp
         source/ThreeBandEQ.h
+        source/BypassCrossfader.cpp
+        source/BypassCrossfader.h
     )
 
     target_compile_definitions(NES_EQ_Tests PRIVATE

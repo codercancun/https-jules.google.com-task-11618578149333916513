@@ -5,7 +5,8 @@ namespace neseq
 {
 namespace
 {
-constexpr float kGainRangeDb = 15.0f;
+constexpr float  kGainRangeDb       = 15.0f;
+constexpr double kBypassRampSeconds = 0.015; // 15 ms click-free bypass fade
 } // namespace
 
 NESEQAudioProcessor::NESEQAudioProcessor()
@@ -77,6 +78,14 @@ void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     eqLeft.prepare (spec);
     eqRight.prepare (spec);
+
+    bypassCrossfader.prepare (sampleRate,
+                              juce::jmax (getTotalNumInputChannels(), 2),
+                              samplesPerBlock,
+                              kBypassRampSeconds);
+
+    const bool bypassed = bypassParam != nullptr && bypassParam->load() > 0.5f;
+    bypassCrossfader.setBypassed (bypassed);
 }
 
 void NESEQAudioProcessor::releaseResources()
@@ -111,35 +120,39 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.clear (ch, 0, buffer.getNumSamples());
 
     const bool bypassed = bypassParam != nullptr && bypassParam->load() > 0.5f;
-    if (bypassed)
-        return;
+    bypassCrossfader.setBypassed (bypassed);
 
-    const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
-    const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
-    const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+    // Capture dry signal for the crossfade before we process in place.
+    if (bypassCrossfader.shouldCaptureDry())
+        bypassCrossfader.captureDry (buffer);
 
-    eqLeft .update (lowDb, midDb, highDb);
-    eqRight.update (lowDb, midDb, highDb);
-
-    const auto numSamples = buffer.getNumSamples();
-
-    if (totalNumInputChannels > 0)
+    if (bypassCrossfader.shouldRunEffect())
     {
-        auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
-                             .getSubsetChannelBlock (0, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
-        eqLeft.process (ctx);
+        const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
+        const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
+        const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+
+        eqLeft .update (lowDb, midDb, highDb);
+        eqRight.update (lowDb, midDb, highDb);
+
+        if (totalNumInputChannels > 0)
+        {
+            auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
+                                 .getSubsetChannelBlock (0, 1);
+            juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
+            eqLeft.process (ctx);
+        }
+
+        if (totalNumInputChannels > 1)
+        {
+            auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
+                                  .getSubsetChannelBlock (1, 1);
+            juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
+            eqRight.process (ctx);
+        }
     }
 
-    if (totalNumInputChannels > 1)
-    {
-        auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
-                              .getSubsetChannelBlock (1, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
-        eqRight.process (ctx);
-    }
-
-    juce::ignoreUnused (numSamples);
+    bypassCrossfader.mix (buffer);
 }
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()

@@ -19,13 +19,27 @@ void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec)
     sampleRate = spec.sampleRate;
     chain.prepare (spec);
 
-    // Force a rebuild on the next call to ``update`` by nudging the cached
-    // gains off the default so the epsilon check triggers.
+    const double rampSeconds = juce::jmax (0.0f, smoothingTimeSec);
+
+    const float targetLow  = smoothedLow .getTargetValue();
+    const float targetMid  = smoothedMid .getTargetValue();
+    const float targetHigh = smoothedHigh.getTargetValue();
+
+    smoothedLow .reset (sampleRate, rampSeconds);
+    smoothedMid .reset (sampleRate, rampSeconds);
+    smoothedHigh.reset (sampleRate, rampSeconds);
+
+    // Snap the smoothers to whatever target the host last requested so we
+    // don't sweep audibly on the first block after prepare().
+    smoothedLow .setCurrentAndTargetValue (targetLow);
+    smoothedMid .setCurrentAndTargetValue (targetMid);
+    smoothedHigh.setCurrentAndTargetValue (targetHigh);
+
+    // Force a coefficient rebuild against the current (post-reset) gains.
     currentLowDb  = std::numeric_limits<float>::infinity();
     currentMidDb  = std::numeric_limits<float>::infinity();
     currentHighDb = std::numeric_limits<float>::infinity();
-
-    update (0.0f, 0.0f, 0.0f);
+    advanceSmoothersAndRebuild (0);
 }
 
 void ThreeBandEQ::reset()
@@ -35,26 +49,53 @@ void ThreeBandEQ::reset()
 
 void ThreeBandEQ::update (float lowGainDb, float midGainDb, float highGainDb)
 {
-    if (std::abs (lowGainDb - currentLowDb) > kGainEpsilonDb)
+    smoothedLow .setTargetValue (lowGainDb);
+    smoothedMid .setTargetValue (midGainDb);
+    smoothedHigh.setTargetValue (highGainDb);
+}
+
+void ThreeBandEQ::snap (float lowGainDb, float midGainDb, float highGainDb)
+{
+    smoothedLow .setCurrentAndTargetValue (lowGainDb);
+    smoothedMid .setCurrentAndTargetValue (midGainDb);
+    smoothedHigh.setCurrentAndTargetValue (highGainDb);
+    advanceSmoothersAndRebuild (0);
+}
+
+void ThreeBandEQ::setSmoothingTime (float seconds) noexcept
+{
+    smoothingTimeSec = juce::jmax (0.0f, seconds);
+}
+
+void ThreeBandEQ::advanceSmoothersAndRebuild (int numSamples)
+{
+    const float lowDb  = numSamples > 0 ? smoothedLow .skip (numSamples)
+                                        : smoothedLow .getCurrentValue();
+    const float midDb  = numSamples > 0 ? smoothedMid .skip (numSamples)
+                                        : smoothedMid .getCurrentValue();
+    const float highDb = numSamples > 0 ? smoothedHigh.skip (numSamples)
+                                        : smoothedHigh.getCurrentValue();
+
+    if (std::abs (lowDb - currentLowDb) > kGainEpsilonDb)
     {
-        updateBand (Low, lowGainDb);
-        currentLowDb = lowGainDb;
+        rebuildBand (Low, lowDb);
+        currentLowDb = lowDb;
     }
 
-    if (std::abs (midGainDb - currentMidDb) > kGainEpsilonDb)
+    if (std::abs (midDb - currentMidDb) > kGainEpsilonDb)
     {
-        updateBand (Mid, midGainDb);
-        currentMidDb = midGainDb;
+        rebuildBand (Mid, midDb);
+        currentMidDb = midDb;
     }
 
-    if (std::abs (highGainDb - currentHighDb) > kGainEpsilonDb)
+    if (std::abs (highDb - currentHighDb) > kGainEpsilonDb)
     {
-        updateBand (High, highGainDb);
-        currentHighDb = highGainDb;
+        rebuildBand (High, highDb);
+        currentHighDb = highDb;
     }
 }
 
-void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
+void ThreeBandEQ::rebuildBand (BandIndex band, float gainDb)
 {
     const auto linearGain = dbToGain (gainDb);
 

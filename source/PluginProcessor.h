@@ -4,6 +4,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_dsp/juce_dsp.h>
 
+#include "BypassCrossfader.h"
 #include "ThreeBandEQ.h"
 
 namespace neseq
@@ -65,6 +66,8 @@ private:
 
     ThreeBandEQ eqLeft;
     ThreeBandEQ eqRight;
+
+    BypassCrossfader bypassCrossfader;
 
     // Cached raw parameter pointers for lock-free access on the audio thread.
     std::atomic<float>* lowGainParam  = nullptr;

@@ -16,7 +16,11 @@ red "A" button for bypass.
 - "A" button bypass toggle.
 - Real-time safe audio processing:
     - No heap allocations on the audio thread.
-    - Coefficients are only rebuilt when a band's target gain actually changes.
+    - Per-band gain is linearly smoothed (20 ms ramp) so dragging a
+      slider is zipper-noise free. Coefficients are only rebuilt while
+      the smoother is moving and are cached once the target is reached.
+    - Soft-bypass: the "A" button crossfades between the dry input and
+      the processed output over a short ramp, so toggling never clicks.
     - Uses `juce::ScopedNoDenormals` in `processBlock`.
 - Full plugin state save/restore via `AudioProcessorValueTreeState`.
 - Stereo and mono bus layouts supported.
@@ -32,6 +36,7 @@ source/
     PluginProcessor.{h,cpp} AudioProcessor – parameters, prepare/process/state
     PluginEditor.{h,cpp}    AudioProcessorEditor – NES themed UI layout
     ThreeBandEQ.{h,cpp}     Mono 3-band EQ (low shelf + peak + high shelf)
+    BypassCrossfader.{h,cpp} Click-free dry/wet ramp used by the bypass toggle
     NESLookAndFeel.{h,cpp}  Palette + typeface + basic label drawing
     NESComponents.{h,cpp}   PowerMeterSlider and NESAButton custom components
 tests/
@@ -77,10 +82,18 @@ cmake --build build --target NES_EQ_AU NES_EQ_VST3 --config Release
 
 ## Tests
 
-A small `juce::UnitTest` suite exercises the 3-band EQ DSP — checking a flat
-response at 0 dB, that each band boosts the right frequency region and leaves
-others alone, symmetry of boost vs. cut, and stability when `update` is called
-with unchanged gains (the coefficient cache). To build and run locally:
+A small `juce::UnitTest` suite exercises both the 3-band EQ DSP and the
+bypass crossfader:
+
+- Flat response at 0 dB and per-band boost / cut symmetry.
+- Gain target changes are smoothed (not stepped) and `snap()` applies
+  gains instantly for state restoration.
+- Bypass crossfader passes the wet signal through when fully active,
+  the dry signal when fully bypassed, and produces no sample-to-sample
+  discontinuities during the ramp.
+- `update` is a no-op when gains are unchanged (coefficient cache).
+
+To build and run locally:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
