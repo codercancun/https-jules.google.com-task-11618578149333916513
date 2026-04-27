@@ -121,25 +121,19 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     eqLeft .update (lowDb, midDb, highDb);
     eqRight.update (lowDb, midDb, highDb);
 
-    const auto numSamples = buffer.getNumSamples();
-
     if (totalNumInputChannels > 0)
     {
         auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
                              .getSubsetChannelBlock (0, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
-        eqLeft.process (ctx);
+        eqLeft.process (leftBlock);
     }
 
     if (totalNumInputChannels > 1)
     {
         auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
                               .getSubsetChannelBlock (1, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
-        eqRight.process (ctx);
+        eqRight.process (rightBlock);
     }
-
-    juce::ignoreUnused (numSamples);
 }
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()

@@ -2,6 +2,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "FrequencyResponseCurve.h"
 #include "NESComponents.h"
 #include "NESLookAndFeel.h"
 #include "PluginProcessor.h"
@@ -27,8 +28,15 @@ private:
 
     NESAButton bypassButton { audioProcessor.getAPVTS(), ParamIDs::bypass };
 
+    FrequencyResponseCurve responseCurve { audioProcessor.getAPVTS() };
+
+    juce::ComboBox presetSelector;
+
     juce::Label titleLabel;
     juce::Label bypassLabel;
+
+    void populatePresetMenu();
+    void applyPreset (int presetIndex);
 
     void drawBackdrop (juce::Graphics& g, juce::Rectangle<int> area);
     void drawTitleBar (juce::Graphics& g, juce::Rectangle<int> area);

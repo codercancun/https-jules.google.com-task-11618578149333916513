@@ -2,8 +2,9 @@
 
 An 8-bit themed, real-time safe **3-band EQ** audio plugin built with
 [JUCE](https://juce.com/). The UI is styled as a chunky NES / pixel-art
-control panel — LED power-meter style sliders for each band and a round
-red "A" button for bypass.
+control panel — LED power-meter style sliders for each band, a round
+red "A" button for bypass, a real-time frequency response curve, and a
+preset selector.
 
 ## Features
 
@@ -11,6 +12,15 @@ red "A" button for bypass.
     - **Low** – low-shelf filter at 200 Hz (±15 dB)
     - **Mid** – peak/bell filter at 1 kHz, Q ≈ 0.9 (±15 dB)
     - **High** – high-shelf filter at 5 kHz (±15 dB)
+- **Smoothed parameter transitions** — gains ramp over 50 ms via
+  `juce::SmoothedValue` to eliminate zipper noise. Coefficients are
+  rebuilt in 32-sample sub-blocks while a ramp is active.
+- **Real-time frequency response visualizer** — computes and draws the
+  combined magnitude response of all three filter stages on a dark
+  recessed panel (20 Hz–20 kHz log scale, ±18 dB), refreshed at 30 Hz.
+- **Preset system** — 10 built-in presets (Flat, Bass Boost, Bass Cut,
+  Vocal Presence, Treble Boost, Scoop, Mid Boost, Warm, Bright,
+  Lo-Fi NES) accessible via a combo box.
 - Retro NES-style pixel-art UI (classic 2C02 palette).
 - Power-meter style vertical sliders with lit LED segments.
 - "A" button bypass toggle.
@@ -27,17 +37,18 @@ red "A" button for bypass.
 ## Project layout
 
 ```
-CMakeLists.txt              Top level build – fetches JUCE and configures the plugin
+CMakeLists.txt                  Top level build – fetches JUCE and configures the plugin
 source/
-    PluginProcessor.{h,cpp} AudioProcessor – parameters, prepare/process/state
-    PluginEditor.{h,cpp}    AudioProcessorEditor – NES themed UI layout
-    ThreeBandEQ.{h,cpp}     Mono 3-band EQ (low shelf + peak + high shelf)
-    NESLookAndFeel.{h,cpp}  Palette + typeface + basic label drawing
-    NESComponents.{h,cpp}   PowerMeterSlider and NESAButton custom components
+    PluginProcessor.{h,cpp}     AudioProcessor – parameters, prepare/process/state
+    PluginEditor.{h,cpp}        AudioProcessorEditor – NES themed UI layout + presets
+    ThreeBandEQ.{h,cpp}         Mono 3-band EQ with smoothed gain transitions
+    NESLookAndFeel.{h,cpp}      Palette + typeface + basic label drawing
+    NESComponents.{h,cpp}       PowerMeterSlider and NESAButton custom components
+    FrequencyResponseCurve.{h,cpp} Real-time EQ frequency response visualizer
 tests/
-    TestsMain.cpp           Console entry point that runs juce::UnitTestRunner
-    ThreeBandEQTests.cpp    Frequency-response tests for the EQ DSP
-.github/workflows/ci.yml    Linux/macOS/Windows build + test matrix
+    TestsMain.cpp               Console entry point that runs juce::UnitTestRunner
+    ThreeBandEQTests.cpp        Frequency-response + smoothing + edge-case tests
+.github/workflows/ci.yml        Linux/macOS/Windows build + test matrix
 ```
 
 ## Building
@@ -77,10 +88,13 @@ cmake --build build --target NES_EQ_AU NES_EQ_VST3 --config Release
 
 ## Tests
 
-A small `juce::UnitTest` suite exercises the 3-band EQ DSP — checking a flat
+A `juce::UnitTest` suite exercises the 3-band EQ DSP — checking a flat
 response at 0 dB, that each band boosts the right frequency region and leaves
-others alone, symmetry of boost vs. cut, and stability when `update` is called
-with unchanged gains (the coefficient cache). To build and run locally:
+others alone, symmetry of boost vs. cut, stability when `update` is called
+with unchanged gains, smoothing behavior (ramp activation, target convergence,
+`isSmoothing` / `getSmoothedGainDb` queries), extreme gain values (±15 dB),
+zero-length blocks, multiple sample rates, and rapid random gain changes. To
+build and run locally:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -99,6 +113,21 @@ Ubuntu, macOS and Windows; macOS additionally builds the AU target.
 | `mid_gain`  | Mid    | −15 … +15 dB   | 0 dB    | Peak, 1 kHz, Q ≈ 0.9        |
 | `high_gain` | High   | −15 … +15 dB   | 0 dB    | High-shelf, 5 kHz           |
 | `bypass`    | Bypass | boolean        | off     | Fully bypasses the EQ chain |
+
+## Presets
+
+| Preset          | Low   | Mid   | High  |
+|-----------------|-------|-------|-------|
+| Flat            | 0 dB  | 0 dB  | 0 dB  |
+| Bass Boost      | +10   | 0     | 0     |
+| Bass Cut        | −10   | 0     | 0     |
+| Vocal Presence  | 0     | +8    | +3    |
+| Treble Boost    | 0     | 0     | +10   |
+| Scoop (V-shape) | +6    | −6    | +6    |
+| Mid Boost       | 0     | +10   | 0     |
+| Warm            | +5    | −2    | −4    |
+| Bright          | −3    | +2    | +8    |
+| Lo-Fi NES       | +8    | −4    | −10   |
 
 ## License
 

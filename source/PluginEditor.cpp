@@ -4,8 +4,32 @@ namespace neseq
 {
 namespace
 {
-constexpr int kDefaultWidth  = 480;
-constexpr int kDefaultHeight = 360;
+constexpr int kDefaultWidth  = 520;
+constexpr int kDefaultHeight = 480;
+
+struct Preset
+{
+    const char* name;
+    float lowDb;
+    float midDb;
+    float highDb;
+};
+
+constexpr Preset kPresets[] =
+{
+    { "Flat",             0.0f,   0.0f,   0.0f },
+    { "Bass Boost",      10.0f,   0.0f,   0.0f },
+    { "Bass Cut",       -10.0f,   0.0f,   0.0f },
+    { "Vocal Presence",   0.0f,   8.0f,   3.0f },
+    { "Treble Boost",     0.0f,   0.0f,  10.0f },
+    { "Scoop (V-shape)", 6.0f,  -6.0f,   6.0f },
+    { "Mid Boost",        0.0f,  10.0f,   0.0f },
+    { "Warm",             5.0f,  -2.0f,  -4.0f },
+    { "Bright",          -3.0f,   2.0f,   8.0f },
+    { "Lo-Fi NES",        8.0f,  -4.0f, -10.0f },
+};
+
+constexpr int kNumPresets = static_cast<int> (sizeof (kPresets) / sizeof (kPresets[0]));
 } // namespace
 
 NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
@@ -32,14 +56,53 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     bypassLabel.setColour (juce::Label::textColourId, NesPalette::white);
     addAndMakeVisible (bypassLabel);
 
+    addAndMakeVisible (responseCurve);
+
+    populatePresetMenu();
+    presetSelector.setColour (juce::ComboBox::backgroundColourId, NesPalette::darkGrey);
+    presetSelector.setColour (juce::ComboBox::textColourId, NesPalette::white);
+    presetSelector.setColour (juce::ComboBox::outlineColourId, NesPalette::grey);
+    presetSelector.setColour (juce::ComboBox::arrowColourId, NesPalette::yellow);
+    presetSelector.setTextWhenNothingSelected ("-- Preset --");
+    presetSelector.onChange = [this]
+    {
+        const int idx = presetSelector.getSelectedId() - 1;
+        if (idx >= 0 && idx < kNumPresets)
+            applyPreset (idx);
+    };
+    addAndMakeVisible (presetSelector);
+
     setResizable (true, true);
-    setResizeLimits (360, 280, 1024, 768);
+    setResizeLimits (400, 400, 1200, 900);
     setSize (kDefaultWidth, kDefaultHeight);
 }
 
 NESEQAudioProcessorEditor::~NESEQAudioProcessorEditor()
 {
     setLookAndFeel (nullptr);
+}
+
+void NESEQAudioProcessorEditor::populatePresetMenu()
+{
+    presetSelector.clear();
+    for (int i = 0; i < kNumPresets; ++i)
+        presetSelector.addItem (kPresets[i].name, i + 1);
+}
+
+void NESEQAudioProcessorEditor::applyPreset (int presetIndex)
+{
+    if (presetIndex < 0 || presetIndex >= kNumPresets)
+        return;
+
+    const auto& preset = kPresets[presetIndex];
+    auto& apvts = audioProcessor.getAPVTS();
+
+    if (auto* param = apvts.getParameter (ParamIDs::lowGain))
+        param->setValueNotifyingHost (param->convertTo0to1 (preset.lowDb));
+    if (auto* param = apvts.getParameter (ParamIDs::midGain))
+        param->setValueNotifyingHost (param->convertTo0to1 (preset.midDb));
+    if (auto* param = apvts.getParameter (ParamIDs::highGain))
+        param->setValueNotifyingHost (param->convertTo0to1 (preset.highDb));
 }
 
 void NESEQAudioProcessorEditor::paint (juce::Graphics& g)
@@ -49,17 +112,14 @@ void NESEQAudioProcessorEditor::paint (juce::Graphics& g)
 
 void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    // Deep-space backdrop reminiscent of the NES title-screen gradient.
     g.fillAll (NesPalette::black);
 
-    // Scanline-style horizontal pixel pattern to reinforce the CRT / 8-bit look.
     g.setColour (juce::Colour (0xff101018));
     for (int y = 0; y < area.getHeight(); y += 4)
         g.fillRect (area.getX(), y, area.getWidth(), 1);
 
     drawTitleBar (g, area.removeFromTop (46));
 
-    // Chunky pixel frame around the plugin.
     auto frame = getLocalBounds();
     g.setColour (NesPalette::white);
     g.drawRect (frame, 2);
@@ -69,15 +129,13 @@ void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle
 
 void NESEQAudioProcessorEditor::drawTitleBar (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    // Red banner across the top, classic Mario-title-screen vibe.
     g.setColour (NesPalette::red);
     g.fillRect (area);
 
     g.setColour (NesPalette::redShadow);
     g.fillRect (area.removeFromBottom (4));
 
-    // Pixel stars scattered across the banner.
-    juce::Random rng (0x4AE5); // deterministic layout
+    juce::Random rng (0x4AE5);
     g.setColour (NesPalette::yellow);
     for (int i = 0; i < 14; ++i)
     {
@@ -91,10 +149,17 @@ void NESEQAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (8);
 
-    // Title banner
     titleLabel.setBounds (area.removeFromTop (40));
+    area.removeFromTop (4);
 
-    area.removeFromTop (8);
+    // Preset selector row.
+    auto presetRow = area.removeFromTop (28);
+    presetSelector.setBounds (presetRow.reduced (40, 0));
+    area.removeFromTop (6);
+
+    // Frequency response visualizer.
+    responseCurve.setBounds (area.removeFromTop (100).reduced (8, 0));
+    area.removeFromTop (6);
 
     // Bottom control strip: bypass button + label.
     auto bottom = area.removeFromBottom (80);

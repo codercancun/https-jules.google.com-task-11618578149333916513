@@ -4,8 +4,6 @@ namespace neseq
 {
 namespace
 {
-// A gain change smaller than this (in dB) is treated as a no-op so we skip the
-// coefficient rebuild. Keeps things lock free and allocation free.
 constexpr float kGainEpsilonDb = 1.0e-3f;
 
 float dbToGain (float db)
@@ -17,15 +15,25 @@ float dbToGain (float db)
 void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = spec.sampleRate;
+    blockSize  = static_cast<int> (spec.maximumBlockSize);
     chain.prepare (spec);
 
-    // Force a rebuild on the next call to ``update`` by nudging the cached
-    // gains off the default so the epsilon check triggers.
-    currentLowDb  = std::numeric_limits<float>::infinity();
-    currentMidDb  = std::numeric_limits<float>::infinity();
-    currentHighDb = std::numeric_limits<float>::infinity();
+    for (int i = 0; i < NumBands; ++i)
+    {
+        smoothedGainDb[i].reset (sampleRate, kSmoothingTimeSec);
+        smoothedGainDb[i].setCurrentAndTargetValue (0.0f);
+        lastAppliedDb[i] = std::numeric_limits<float>::infinity();
+    }
 
     update (0.0f, 0.0f, 0.0f);
+
+    // Force an immediate coefficient build at 0 dB.
+    for (int i = 0; i < NumBands; ++i)
+    {
+        smoothedGainDb[i].setCurrentAndTargetValue (0.0f);
+        updateBand (static_cast<BandIndex> (i), 0.0f);
+        lastAppliedDb[i] = 0.0f;
+    }
 }
 
 void ThreeBandEQ::reset()
@@ -35,23 +43,81 @@ void ThreeBandEQ::reset()
 
 void ThreeBandEQ::update (float lowGainDb, float midGainDb, float highGainDb)
 {
-    if (std::abs (lowGainDb - currentLowDb) > kGainEpsilonDb)
+    smoothedGainDb[Low].setTargetValue (lowGainDb);
+    smoothedGainDb[Mid].setTargetValue (midGainDb);
+    smoothedGainDb[High].setTargetValue (highGainDb);
+}
+
+void ThreeBandEQ::process (juce::dsp::AudioBlock<float>& block)
+{
+    const auto numSamples = static_cast<int> (block.getNumSamples());
+
+    if (numSamples == 0)
+        return;
+
+    // If no smoother is ramping, process the whole block at once.
+    if (! isSmoothing())
     {
-        updateBand (Low, lowGainDb);
-        currentLowDb = lowGainDb;
+        // Update coefficients once in case setTargetValue was just called.
+        for (int i = 0; i < NumBands; ++i)
+        {
+            const float db = smoothedGainDb[i].getTargetValue();
+            if (std::abs (db - lastAppliedDb[i]) > kGainEpsilonDb)
+            {
+                updateBand (static_cast<BandIndex> (i), db);
+                lastAppliedDb[i] = db;
+            }
+        }
+
+        auto ctx = juce::dsp::ProcessContextReplacing<float> (block);
+        chain.process (ctx);
+        return;
     }
 
-    if (std::abs (midGainDb - currentMidDb) > kGainEpsilonDb)
-    {
-        updateBand (Mid, midGainDb);
-        currentMidDb = midGainDb;
-    }
+    // Process in sub-blocks when smoothing is active.
+    // Use a moderate sub-block size to balance smoothness vs. CPU.
+    constexpr int kSubBlockSize = 32;
+    int samplesRemaining = numSamples;
+    int startSample = 0;
 
-    if (std::abs (highGainDb - currentHighDb) > kGainEpsilonDb)
+    while (samplesRemaining > 0)
     {
-        updateBand (High, highGainDb);
-        currentHighDb = highGainDb;
+        const int chunkSize = juce::jmin (kSubBlockSize, samplesRemaining);
+
+        // Advance smoothers and update coefficients.
+        for (int i = 0; i < NumBands; ++i)
+        {
+            smoothedGainDb[i].skip (chunkSize);
+            const float db = smoothedGainDb[i].getCurrentValue();
+            if (std::abs (db - lastAppliedDb[i]) > kGainEpsilonDb)
+            {
+                updateBand (static_cast<BandIndex> (i), db);
+                lastAppliedDb[i] = db;
+            }
+        }
+
+        auto subBlock = block.getSubBlock (static_cast<size_t> (startSample),
+                                           static_cast<size_t> (chunkSize));
+        auto ctx = juce::dsp::ProcessContextReplacing<float> (subBlock);
+        chain.process (ctx);
+
+        startSample += chunkSize;
+        samplesRemaining -= chunkSize;
     }
+}
+
+float ThreeBandEQ::getSmoothedGainDb (int bandIndex) const
+{
+    if (bandIndex >= 0 && bandIndex < NumBands)
+        return smoothedGainDb[bandIndex].getCurrentValue();
+    return 0.0f;
+}
+
+bool ThreeBandEQ::isSmoothing() const
+{
+    return smoothedGainDb[Low].isSmoothing()
+        || smoothedGainDb[Mid].isSmoothing()
+        || smoothedGainDb[High].isSmoothing();
 }
 
 void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
@@ -82,6 +148,8 @@ void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
                                                            0.707f,
                                                            linearGain);
             chain.get<High>().coefficients = newCoefficients;
+            break;
+        case NumBands:
             break;
     }
 }
