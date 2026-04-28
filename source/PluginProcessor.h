@@ -5,6 +5,8 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "ThreeBandEQ.h"
+#include <array>
+#include <atomic>
 
 namespace neseq
 {
@@ -14,10 +16,11 @@ namespace neseq
 */
 namespace ParamIDs
 {
-    inline constexpr auto lowGain  = "low_gain";
-    inline constexpr auto midGain  = "mid_gain";
-    inline constexpr auto highGain = "high_gain";
-    inline constexpr auto bypass   = "bypass";
+    inline constexpr auto lowGain    = "low_gain";
+    inline constexpr auto midGain    = "mid_gain";
+    inline constexpr auto highGain   = "high_gain";
+    inline constexpr auto bypass     = "bypass";
+    inline constexpr auto outputGain = "output_gain";
 }
 
 class NESEQAudioProcessor : public juce::AudioProcessor
@@ -67,11 +70,31 @@ private:
     ThreeBandEQ eqRight;
 
     // Cached raw parameter pointers for lock-free access on the audio thread.
-    std::atomic<float>* lowGainParam  = nullptr;
-    std::atomic<float>* midGainParam  = nullptr;
-    std::atomic<float>* highGainParam = nullptr;
-    std::atomic<float>* bypassParam   = nullptr;
+    std::atomic<float>* lowGainParam    = nullptr;
+    std::atomic<float>* midGainParam    = nullptr;
+    std::atomic<float>* highGainParam   = nullptr;
+    std::atomic<float>* bypassParam     = nullptr;
+    std::atomic<float>* outputGainParam = nullptr;
 
+    // ---- Spectrum analyser FIFO (single-producer / single-consumer) -----
+    static constexpr int kFFTOrder = 10;                       // 1024-point FFT
+    static constexpr int kFFTSize  = 1 << kFFTOrder;           // 1024
+
+    std::array<float, kFFTSize * 2> fftData {};
+    std::array<float, kFFTSize>     fifoBuffer {};
+    int fifoIndex = 0;
+    bool nextFFTBlockReady = false;
+
+    void pushSampleToFifo (float sample) noexcept;
+
+public:
+    // The editor reads the FFT result from this array.
+    std::array<float, kFFTSize * 2>& getFFTData() noexcept       { return fftData; }
+    bool& getFFTReady() noexcept                                  { return nextFFTBlockReady; }
+    static constexpr int getFFTSize() noexcept                    { return kFFTSize; }
+    static constexpr int getFFTOrder() noexcept                   { return kFFTOrder; }
+
+private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NESEQAudioProcessor)
 };
 } // namespace neseq

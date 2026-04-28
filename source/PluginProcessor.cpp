@@ -14,10 +14,11 @@ NESEQAudioProcessor::NESEQAudioProcessor()
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", makeParameterLayout())
 {
-    lowGainParam  = apvts.getRawParameterValue (ParamIDs::lowGain);
-    midGainParam  = apvts.getRawParameterValue (ParamIDs::midGain);
-    highGainParam = apvts.getRawParameterValue (ParamIDs::highGain);
-    bypassParam   = apvts.getRawParameterValue (ParamIDs::bypass);
+    lowGainParam    = apvts.getRawParameterValue (ParamIDs::lowGain);
+    midGainParam    = apvts.getRawParameterValue (ParamIDs::midGain);
+    highGainParam   = apvts.getRawParameterValue (ParamIDs::highGain);
+    bypassParam     = apvts.getRawParameterValue (ParamIDs::bypass);
+    outputGainParam = apvts.getRawParameterValue (ParamIDs::outputGain);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -64,6 +65,13 @@ NESEQAudioProcessor::makeParameterLayout()
         juce::ParameterID { ParamIDs::bypass, 1 },
         "Bypass",
         false));
+
+    params.push_back (std::make_unique<FloatParam> (
+        juce::ParameterID { ParamIDs::outputGain, 1 },
+        "Output",
+        juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f, 1.0f),
+        0.0f,
+        gainAttributes));
 
     return { params.begin(), params.end() };
 }
@@ -139,6 +147,32 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         eqRight.process (ctx);
     }
 
+    // Apply output gain
+    const float outGainDb = outputGainParam != nullptr ? outputGainParam->load() : 0.0f;
+    if (std::abs (outGainDb) > 0.01f)
+    {
+        const float outGainLinear = juce::Decibels::decibelsToGain (outGainDb);
+        for (int ch = 0; ch < totalNumInputChannels; ++ch)
+            buffer.applyGain (ch, 0, numSamples, outGainLinear);
+    }
+
+    // Push mono-mixed samples into the FFT FIFO for the spectrum analyser
+    if (totalNumInputChannels > 0)
+    {
+        const auto* left = buffer.getReadPointer (0);
+        if (totalNumInputChannels > 1)
+        {
+            const auto* right = buffer.getReadPointer (1);
+            for (int i = 0; i < numSamples; ++i)
+                pushSampleToFifo ((left[i] + right[i]) * 0.5f);
+        }
+        else
+        {
+            for (int i = 0; i < numSamples; ++i)
+                pushSampleToFifo (left[i]);
+        }
+    }
+
     juce::ignoreUnused (numSamples);
 }
 
@@ -164,6 +198,27 @@ void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
     }
 }
+
+void NESEQAudioProcessor::pushSampleToFifo (float sample) noexcept
+{
+    if (fifoIndex < kFFTSize)
+    {
+        fifoBuffer[static_cast<size_t> (fifoIndex)] = sample;
+        ++fifoIndex;
+    }
+
+    if (fifoIndex == kFFTSize)
+    {
+        if (! nextFFTBlockReady)
+        {
+            std::copy (fifoBuffer.begin(), fifoBuffer.end(), fftData.begin());
+            std::fill (fftData.begin() + kFFTSize, fftData.end(), 0.0f);
+            nextFFTBlockReady = true;
+        }
+        fifoIndex = 0;
+    }
+}
+
 } // namespace neseq
 
 // This is the required entry point for hosts to instantiate the plugin.
