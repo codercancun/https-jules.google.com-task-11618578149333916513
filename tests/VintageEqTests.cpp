@@ -44,129 +44,92 @@ public:
 
     void runTest() override
     {
-        beginTest("Clears unneeded channels");
-        {
-            VintageEqAudioProcessor processor;
-
-            // Set up 1 in, 2 out
-            juce::AudioProcessor::BusesLayout layout;
-            layout.inputBuses.add(juce::AudioChannelSet::mono());
-            layout.outputBuses.add(juce::AudioChannelSet::stereo());
-
-            // It might fail if layout isn't supported, but assuming template setup defaults to stereo/stereo
-            // Let's just create a buffer with 2 channels, pretending 1 in, 2 out
-            // Since we can't easily change the processor's input/output channel count here without proper setup,
-            // we will simulate the behavior manually or skip if not possible.
-            // Actually, the processor defaults to stereo in / stereo out. We can try to process a block and make sure it doesn't crash.
-        }
-
         beginTest("Processing with valid sample rate modifies buffer");
         {
             VintageEqAudioProcessor processor;
             processor.setPlayConfigDetails(2, 2, 44100.0, 512);
             processor.prepareToPlay(44100.0, 512);
 
-            // Gain needs to be set to a value that modifies the signal
-            auto* gainParam = processor.treeState.getParameter("GAIN_0");
-            gainParam->setValueNotifyingHost(12.0f); // Max gain to ensure modification
-
-            auto* freqParam = processor.treeState.getParameter("FREQ_0");
-            freqParam->setValueNotifyingHost(1.0f);
+            // Drive band 0 to a non-flat response so the filter is guaranteed to alter the signal.
+            // setValueNotifyingHost takes a NORMALISED value in [0, 1].
+            processor.treeState.getParameter("GAIN_0")->setValueNotifyingHost(1.0f); // +12 dB
+            processor.treeState.getParameter("FREQ_0")->setValueNotifyingHost(0.5f);
+            processor.treeState.getParameter("Q_0")->setValueNotifyingHost(0.5f);
 
             juce::AudioBuffer<float> buffer(2, 512);
 
-            // Fill with sine wave or noise, a constant 1.0f might not be modified by peak filters
-            for (int i = 0; i < buffer.getNumChannels(); ++i)
-                for (int j = 0; j < buffer.getNumSamples(); ++j)
-                    buffer.setSample(i, j, (j % 2 == 0) ? 1.0f : -1.0f);
+            // A constant signal would be a DC component that a peak filter passes unchanged.
+            // Use an alternating impulse train to produce broadband content.
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                for (int n = 0; n < buffer.getNumSamples(); ++n)
+                    buffer.setSample(ch, n, (n % 2 == 0) ? 1.0f : -1.0f);
 
-            // Process a few blocks to allow filters to warm up and change the output
+            juce::AudioBuffer<float> original;
+            original.makeCopyOf(buffer);
+
             juce::MidiBuffer midiMessages;
             processor.processBlock(buffer, midiMessages);
-            processor.processBlock(buffer, midiMessages);
 
-            // After processing, the sample values should be modified
             bool changed = false;
-            for (int i = 0; i < buffer.getNumChannels(); ++i)
-                for (int j = 0; j < buffer.getNumSamples(); ++j)
-                {
-                    float original = (j % 2 == 0) ? 1.0f : -1.0f;
-                    if (std::abs(buffer.getSample(i, j) - original) > 0.01f)
+            for (int ch = 0; ch < buffer.getNumChannels() && ! changed; ++ch)
+                for (int n = 0; n < buffer.getNumSamples(); ++n)
+                    if (std::abs(buffer.getSample(ch, n) - original.getSample(ch, n)) > 0.01f)
                     {
                         changed = true;
                         break;
                     }
-                }
             expect(changed);
         }
 
         beginTest("Processing with sample rate <= 0 exits early");
         {
             VintageEqAudioProcessor processor;
-            // sampleRate is 0 by default before prepareToPlay
+            // prepareToPlay has not been called: sample rate must be <= 0 for this test to be meaningful.
+            expect(processor.getSampleRate() <= 0.0);
 
             juce::AudioBuffer<float> buffer(2, 512);
-            // Fill with 1.0f
-            for (int i = 0; i < buffer.getNumChannels(); ++i)
-                for (int j = 0; j < buffer.getNumSamples(); ++j)
-                    buffer.setSample(i, j, 1.0f);
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                for (int n = 0; n < buffer.getNumSamples(); ++n)
+                    buffer.setSample(ch, n, 1.0f);
 
             juce::MidiBuffer midiMessages;
-
             processor.processBlock(buffer, midiMessages);
 
-            // Since sample rate <= 0, processBlock should return early and not modify the buffer
-            bool changed = false;
-            for (int i = 0; i < buffer.getNumChannels(); ++i)
-                for (int j = 0; j < buffer.getNumSamples(); ++j)
-                    if (buffer.getSample(i, j) != 1.0f)
+            bool unchanged = true;
+            for (int ch = 0; ch < buffer.getNumChannels() && unchanged; ++ch)
+                for (int n = 0; n < buffer.getNumSamples(); ++n)
+                    if (buffer.getSample(ch, n) != 1.0f)
                     {
-                        changed = true;
+                        unchanged = false;
                         break;
                     }
-            expect(!changed);
+            expect(unchanged);
         }
 
         beginTest("Processing clears extra output channels");
         {
-            // Instead of simulating via setPlayConfigDetails which might not work exactly as intended
-            // if the plugin defaults to 2 in / 2 out in BusesLayout, let's subclass and force it.
-            struct MonoToStereoProcessor : public VintageEqAudioProcessor {
-                MonoToStereoProcessor() {}
-
-                // Override bus layout checking to allow mono to stereo
-                bool isBusesLayoutSupported(const BusesLayout& layouts) const override {
-                    return true;
-                }
-            };
-
-            MonoToStereoProcessor processor;
-            // Set bus layout directly
-            juce::AudioProcessor::BusesLayout layout;
-            layout.inputBuses.add(juce::AudioChannelSet::mono());
-            layout.outputBuses.add(juce::AudioChannelSet::stereo());
-            processor.setBusesLayout(layout);
-
+            VintageEqAudioProcessor processor;
+            // setPlayConfigDetails bypasses the BusesLayout negotiation and lets us simulate
+            // a host providing a buffer with more output channels than input channels.
             processor.setPlayConfigDetails(1, 2, 44100.0, 512);
             processor.prepareToPlay(44100.0, 512);
 
             juce::AudioBuffer<float> buffer(2, 512);
-            for (int i = 0; i < buffer.getNumChannels(); ++i)
-                for (int j = 0; j < buffer.getNumSamples(); ++j)
-                    buffer.setSample(i, j, 1.0f);
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                for (int n = 0; n < buffer.getNumSamples(); ++n)
+                    buffer.setSample(ch, n, 1.0f);
 
             juce::MidiBuffer midiMessages;
             processor.processBlock(buffer, midiMessages);
 
+            // The extra output channel (index 1) must be cleared by processBlock.
             bool cleared = true;
-            for (int j = 0; j < buffer.getNumSamples(); ++j)
-            {
-                if (std::abs(buffer.getSample(1, j)) > 0.01f)
+            for (int n = 0; n < buffer.getNumSamples(); ++n)
+                if (std::abs(buffer.getSample(1, n)) > 0.01f)
                 {
                     cleared = false;
                     break;
                 }
-            }
             expect(cleared);
         }
     }
