@@ -1,17 +1,18 @@
 #include "VintageEqAudioProcessor.h"
 
 VintageEqAudioProcessor::VintageEqAudioProcessor()
+     : AudioProcessor (
 #ifndef JucePlugin_PreferredChannelConfigurations
-     : AudioProcessor (BusesProperties()
+                       BusesProperties()
                      #if ! JucePlugin_IsMidiEffect
                       #if ! JucePlugin_IsSynth
                        .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                       #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
+#endif
                        ),
        treeState (*this, nullptr, "PARAMETERS", createParameterLayout())
-#endif
 {
 }
 
@@ -69,15 +70,18 @@ int VintageEqAudioProcessor::getCurrentProgram()
 
 void VintageEqAudioProcessor::setCurrentProgram (int index)
 {
+    juce::ignoreUnused (index);
 }
 
 const juce::String VintageEqAudioProcessor::getProgramName (int index)
 {
+    juce::ignoreUnused (index);
     return {};
 }
 
 void VintageEqAudioProcessor::changeProgramName (int index, const juce::String& newName)
 {
+    juce::ignoreUnused (index, newName);
 }
 
 void VintageEqAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -120,6 +124,7 @@ bool VintageEqAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 
 void VintageEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
