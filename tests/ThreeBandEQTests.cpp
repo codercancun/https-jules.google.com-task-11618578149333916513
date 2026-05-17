@@ -175,6 +175,45 @@ public:
                 expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
                     "zero input should produce zero output");
         }
+
+        beginTest ("reset clears filter state (no ringing)");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = kBlockSize;
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+
+            // Set some EQ so the filters have a state
+            eq.update (12.0f, 12.0f, 12.0f);
+
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+
+            // 1. Push a non-zero signal (e.g., ones) to get filters into a non-zero state
+            for (int i = 0; i < kBlockSize; ++i)
+                buffer.setSample (0, i, 1.0f);
+
+            juce::dsp::AudioBlock<float> block1 (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx1 (block1);
+            eq.process (ctx1);
+
+            // 2. Call reset
+            eq.reset();
+
+            // 3. Push zeroes
+            buffer.clear();
+            juce::dsp::AudioBlock<float> block2 (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx2 (block2);
+            eq.process (ctx2);
+
+            // 4. Verify output is completely zero (no ringing)
+            for (int i = 0; i < kBlockSize; ++i)
+            {
+                expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
+                    "output should be exactly zero immediately after reset");
+            }
+        }
     }
 };
 
