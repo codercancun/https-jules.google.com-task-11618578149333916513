@@ -73,16 +73,14 @@ void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     juce::dsp::ProcessSpec spec {};
     spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
-    spec.numChannels      = 1; // each ThreeBandEQ instance handles one channel
+    spec.numChannels      = static_cast<juce::uint32> (juce::jmin (2, juce::jmax (1, getTotalNumInputChannels())));
 
-    eqLeft.prepare (spec);
-    eqRight.prepare (spec);
+    eqStereo.prepare (spec);
 }
 
 void NESEQAudioProcessor::releaseResources()
 {
-    eqLeft.reset();
-    eqRight.reset();
+    eqStereo.reset();
 }
 
 bool NESEQAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -118,25 +116,17 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
     const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
 
-    eqLeft .update (lowDb, midDb, highDb);
-    eqRight.update (lowDb, midDb, highDb);
+    eqStereo.update (lowDb, midDb, highDb);
 
     const auto numSamples = buffer.getNumSamples();
 
-    if (totalNumInputChannels > 0)
+    const int numChannelsToProcess = juce::jmin (2, totalNumInputChannels);
+    if (numChannelsToProcess > 0)
     {
-        auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
-                             .getSubsetChannelBlock (0, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
-        eqLeft.process (ctx);
-    }
-
-    if (totalNumInputChannels > 1)
-    {
-        auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
-                              .getSubsetChannelBlock (1, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
-        eqRight.process (ctx);
+        auto block = juce::dsp::AudioBlock<float> (buffer)
+                         .getSubsetChannelBlock (0, static_cast<size_t> (numChannelsToProcess));
+        juce::dsp::ProcessContextReplacing<float> ctx (block);
+        eqStereo.process (ctx);
     }
 
     juce::ignoreUnused (numSamples);
