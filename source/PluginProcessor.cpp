@@ -1,5 +1,8 @@
 #include "PluginProcessor.h"
+
+#ifndef NES_EQ_UNIT_TESTS
 #include "PluginEditor.h"
+#endif
 
 namespace neseq
 {
@@ -144,7 +147,11 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()
 {
+#ifdef NES_EQ_UNIT_TESTS
+    return nullptr;
+#else
     return new NESEQAudioProcessorEditor (*this);
+#endif
 }
 
 void NESEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

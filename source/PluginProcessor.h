@@ -39,7 +39,13 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return JucePlugin_Name; }
+    const juce::String getName() const override {
+#ifndef NES_EQ_UNIT_TESTS
+        return JucePlugin_Name;
+#else
+        return "NES-EQ";
+#endif
+    }
 
     bool acceptsMidi()  const override { return false; }
     bool producesMidi() const override { return false; }
