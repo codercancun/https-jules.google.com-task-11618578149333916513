@@ -63,8 +63,7 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    ThreeBandEQ eqLeft;
-    ThreeBandEQ eqRight;
+    ThreeBandEQ eqStereo;
 
     // Cached raw parameter pointers for lock-free access on the audio thread.
     std::atomic<float>* lowGainParam  = nullptr;
