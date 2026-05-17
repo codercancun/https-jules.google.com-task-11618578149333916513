@@ -124,3 +124,16 @@ if(NES_EQ_BUILD_TESTS)
 
     add_test(NAME NES_EQ_Tests COMMAND NES_EQ_Tests)
 endif()
+
+# Benchmark
+juce_add_console_app(NES_EQ_Benchmark PRODUCT_NAME "NES-EQ-Benchmark")
+juce_generate_juce_header(NES_EQ_Benchmark)
+target_sources(NES_EQ_Benchmark PRIVATE tests/Benchmark.cpp)
+target_compile_definitions(NES_EQ_Benchmark PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(NES_EQ_Benchmark PRIVATE
+    juce::juce_core
+    juce::juce_graphics
+    juce::juce_events
+    PUBLIC
+    juce::juce_recommended_config_flags
+)

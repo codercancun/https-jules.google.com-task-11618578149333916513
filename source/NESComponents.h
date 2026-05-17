@@ -53,9 +53,11 @@ public:
     void paintButton (juce::Graphics& g,
                       bool shouldDrawButtonAsHighlighted,
                       bool shouldDrawButtonAsDown) override;
+    void resized() override;
 
 private:
     juce::AudioProcessorValueTreeState::ButtonAttachment attachment;
+    juce::Font labelFont;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NESAButton)
 };

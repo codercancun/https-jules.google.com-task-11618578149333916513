@@ -148,6 +148,14 @@ NESAButton::NESAButton (juce::AudioProcessorValueTreeState& apvts,
     setTooltip ("Bypass");
 }
 
+void NESAButton::resized()
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (2.0f);
+    labelFont = juce::Font (juce::Font::getDefaultMonospacedFontName(),
+                            bounds.getHeight() * 0.55f,
+                            juce::Font::bold);
+}
+
 void NESAButton::paintButton (juce::Graphics& g,
                               bool shouldDrawButtonAsHighlighted,
                               bool shouldDrawButtonAsDown)
@@ -173,10 +181,7 @@ void NESAButton::paintButton (juce::Graphics& g,
 
     // Letter "A" in white, pixelated
     g.setColour (NesPalette::white);
-    auto font = juce::Font (juce::Font::getDefaultMonospacedFontName(),
-                            bounds.getHeight() * 0.55f,
-                            juce::Font::bold);
-    g.setFont (font);
+    g.setFont (labelFont);
     g.drawFittedText ("A",
                       getLocalBounds(),
                       juce::Justification::centred,
