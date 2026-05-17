@@ -77,7 +77,8 @@ void NESEQAudioProcessorEditor::drawTitleBar (juce::Graphics& g, juce::Rectangle
     g.fillRect (area.removeFromBottom (4));
 
     // Pixel stars scattered across the banner.
-    juce::Random rng (0x4AE5); // deterministic layout
+    static const auto starSeed = juce::Random::getSystemRandom().nextInt64();
+    juce::Random rng (starSeed); // deterministic layout
     g.setColour (NesPalette::yellow);
     for (int i = 0; i < 14; ++i)
     {
