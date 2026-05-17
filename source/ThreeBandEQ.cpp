@@ -65,7 +65,7 @@ void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
         case Low:
             newCoefficients = Coefficients::makeLowShelf (sampleRate,
                                                           kLowFreqHz,
-                                                          0.707f,
+                                                          kShelfQ,
                                                           linearGain);
             chain.get<Low>().coefficients = newCoefficients;
             break;
@@ -79,7 +79,7 @@ void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
         case High:
             newCoefficients = Coefficients::makeHighShelf (sampleRate,
                                                            kHighFreqHz,
-                                                           0.707f,
+                                                           kShelfQ,
                                                            linearGain);
             chain.get<High>().coefficients = newCoefficients;
             break;

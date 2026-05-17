@@ -43,6 +43,7 @@ public:
     static constexpr float kMidFreqHz  = 1000.0f;
     static constexpr float kHighFreqHz = 5000.0f;
     static constexpr float kMidQ       = 0.9f;
+    static constexpr float kShelfQ     = 0.707f;
 
 private:
     enum BandIndex { Low = 0, Mid, High };
