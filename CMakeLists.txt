@@ -104,16 +104,25 @@ if(NES_EQ_BUILD_TESTS)
     target_sources(NES_EQ_Tests PRIVATE
         tests/TestsMain.cpp
         tests/ThreeBandEQTests.cpp
+        tests/PluginProcessorTests.cpp
         source/ThreeBandEQ.cpp
         source/ThreeBandEQ.h
+        source/PluginProcessor.cpp
+        source/PluginProcessor.h
     )
 
     target_compile_definitions(NES_EQ_Tests PRIVATE
+        NES_EQ_UNIT_TESTS=1
+        JucePlugin_Name="NES-EQ"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
     )
 
     target_link_libraries(NES_EQ_Tests PRIVATE
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_gui_basics
+        juce::juce_graphics
         juce::juce_core
         juce::juce_dsp
         juce::juce_audio_basics
