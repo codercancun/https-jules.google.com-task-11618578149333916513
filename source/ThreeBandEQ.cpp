@@ -58,30 +58,28 @@ void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
 {
     const auto linearGain = dbToGain (gainDb);
 
-    juce::ReferenceCountedObjectPtr<Coefficients> newCoefficients;
-
     switch (band)
     {
         case Low:
-            newCoefficients = Coefficients::makeLowShelf (sampleRate,
-                                                          kLowFreqHz,
-                                                          0.707f,
-                                                          linearGain);
-            chain.get<Low>().coefficients = newCoefficients;
+            *chain.get<Low>().coefficients =
+                juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (sampleRate,
+                                                                        kLowFreqHz,
+                                                                        0.707f,
+                                                                        linearGain);
             break;
         case Mid:
-            newCoefficients = Coefficients::makePeakFilter (sampleRate,
-                                                            kMidFreqHz,
-                                                            kMidQ,
-                                                            linearGain);
-            chain.get<Mid>().coefficients = newCoefficients;
+            *chain.get<Mid>().coefficients =
+                juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate,
+                                                                          kMidFreqHz,
+                                                                          kMidQ,
+                                                                          linearGain);
             break;
         case High:
-            newCoefficients = Coefficients::makeHighShelf (sampleRate,
-                                                           kHighFreqHz,
-                                                           0.707f,
-                                                           linearGain);
-            chain.get<High>().coefficients = newCoefficients;
+            *chain.get<High>().coefficients =
+                juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate,
+                                                                         kHighFreqHz,
+                                                                         0.707f,
+                                                                         linearGain);
             break;
     }
 }
