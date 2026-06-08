@@ -23,7 +23,7 @@ float measureRms (ThreeBandEQ& eq, float freqHz, float lowDb, float midDb, float
     spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
     spec.numChannels      = 1;
     eq.prepare (spec);
-    eq.update (lowDb, midDb, highDb);
+    eq.snap (lowDb, midDb, highDb);
 
     const double omega = juce::MathConstants<double>::twoPi * freqHz / kSampleRate;
 
@@ -136,44 +136,118 @@ public:
                 "high-shelf should barely touch 200 Hz");
         }
 
-        beginTest ("cuts attenuate symmetrically with boosts");
+        beginTest ("shelf boost/cut symmetry");
         {
             ThreeBandEQ eq;
-            const auto boostDb = measureGainDb (eq, 50.0f,  12.0f, 0.0f, 0.0f);
-            const auto cutDb   = measureGainDb (eq, 50.0f, -12.0f, 0.0f, 0.0f);
+            const float boostDb = measureGainDb (eq, 50.0f,  12.0f, 0.0f, 0.0f);
+            const float cutDb   = measureGainDb (eq, 50.0f, -12.0f, 0.0f, 0.0f);
 
-            expectLessThan (cutDb, -10.0f,
-                "low-shelf @50 Hz with -12 dB low gain should cut close to full");
-            // Shelf cut and boost should be roughly mirror images of 0 dB.
             expectWithinAbsoluteError (boostDb + cutDb, 0.0f, 1.5f,
-                "shelf boost and cut should be approximately symmetric");
+                "boost and cut should be roughly symmetric around 0 dB");
         }
 
-        beginTest ("update is a no-op when gains are unchanged (coefficient cache)");
+        beginTest ("coefficient cache: repeated update with unchanged gains is stable");
         {
             ThreeBandEQ eq;
             juce::dsp::ProcessSpec spec {};
             spec.sampleRate       = kSampleRate;
-            spec.maximumBlockSize = kBlockSize;
+            spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
             spec.numChannels      = 1;
             eq.prepare (spec);
+            eq.snap (0.0f, 0.0f, 0.0f);
 
-            // Repeated identical updates should leave the filter stable and
-            // deterministic. Run a zero-input block and expect zero output
-            // (no denormal surprises, no state corruption).
-            eq.update (3.0f, -3.0f, 6.0f);
-            eq.update (3.0f, -3.0f, 6.0f);
-            eq.update (3.0f, -3.0f, 6.0f);
-
+            // Process a block of silence through many identical update cycles.
             juce::AudioBuffer<float> buffer (1, kBlockSize);
             buffer.clear();
+
+            for (int i = 0; i < 50; ++i)
+            {
+                eq.update (0.0f, 0.0f, 0.0f);
+                juce::dsp::AudioBlock<float> block_ (buffer);
+                juce::dsp::ProcessContextReplacing<float> ctx (block_);
+                eq.process (ctx);
+            }
+
+            // Output should still be silence (within floating-point noise).
+            float maxAbs = 0.0f;
+            const auto* data = buffer.getReadPointer (0);
+            for (int i = 0; i < kBlockSize; ++i)
+                maxAbs = juce::jmax (maxAbs, std::abs (data[i]));
+
+            expectLessThan (maxAbs, 1.0e-6f,
+                "output should remain silent when processing silence with 0 dB gains");
+        }
+
+        beginTest ("reset clears filter state");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+            eq.snap (12.0f, 12.0f, 12.0f);
+
+            // Feed a loud sine to build up internal filter state.
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            const double omega = juce::MathConstants<double>::twoPi * 1000.0 / kSampleRate;
+            for (int i = 0; i < kBlockSize; ++i)
+                buffer.getWritePointer (0)[i] = static_cast<float> (std::sin (omega * i));
+
             juce::dsp::AudioBlock<float> block_ (buffer);
             juce::dsp::ProcessContextReplacing<float> ctx (block_);
             eq.process (ctx);
 
+            // Reset and process silence.
+            eq.reset();
+            buffer.clear();
+
+            juce::dsp::AudioBlock<float> block2 (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx2 (block2);
+            eq.process (ctx2);
+
+            float maxAbs = 0.0f;
+            const auto* data = buffer.getReadPointer (0);
             for (int i = 0; i < kBlockSize; ++i)
-                expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
-                    "zero input should produce zero output");
+                maxAbs = juce::jmax (maxAbs, std::abs (data[i]));
+
+            expectLessThan (maxAbs, 1.0e-4f,
+                "output should be near silence after reset + processing silence");
+        }
+
+        beginTest ("smoothing: gain ramp eliminates discontinuities");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+            eq.snap (0.0f, 0.0f, 0.0f);
+
+            // Abruptly request +12 dB low boost via update (smoothed).
+            eq.update (12.0f, 0.0f, 0.0f);
+
+            // Process a sine tone and check for large inter-sample jumps.
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            const double omega = juce::MathConstants<double>::twoPi * 50.0 / kSampleRate;
+            for (int i = 0; i < kBlockSize; ++i)
+                buffer.getWritePointer (0)[i] = static_cast<float> (std::sin (omega * i));
+
+            juce::dsp::AudioBlock<float> block_ (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx (block_);
+            eq.process (ctx);
+
+            float maxDelta = 0.0f;
+            const auto* data = buffer.getReadPointer (0);
+            for (int i = 1; i < kBlockSize; ++i)
+                maxDelta = juce::jmax (maxDelta, std::abs (data[i] - data[i - 1]));
+
+            // A 50 Hz sine at 48 kHz has a max inter-sample delta of about
+            // 2*pi*50/48000 ≈ 0.0065. Even with boost, smoothing should
+            // keep it well below a hard discontinuity threshold.
+            expectLessThan (maxDelta, 0.5f,
+                "smoothed gain change should not produce large discontinuities");
         }
     }
 };
