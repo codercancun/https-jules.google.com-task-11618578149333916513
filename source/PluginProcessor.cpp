@@ -14,10 +14,10 @@ NESEQAudioProcessor::NESEQAudioProcessor()
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", makeParameterLayout())
 {
-    lowGainParam  = apvts.getRawParameterValue (ParamIDs::lowGain);
-    midGainParam  = apvts.getRawParameterValue (ParamIDs::midGain);
-    highGainParam = apvts.getRawParameterValue (ParamIDs::highGain);
-    bypassParam   = apvts.getRawParameterValue (ParamIDs::bypass);
+    for (int i = 0; i < EightBandEQ::kNumBands; ++i)
+        bandGainParams[static_cast<size_t> (i)] = apvts.getRawParameterValue (ParamIDs::bandGain[static_cast<size_t> (i)]);
+
+    bypassParam = apvts.getRawParameterValue (ParamIDs::bypass);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -37,28 +37,17 @@ NESEQAudioProcessor::makeParameterLayout()
                                   });
 
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-    params.reserve (4);
+    params.reserve (EightBandEQ::kNumBands + 1);
 
-    params.push_back (std::make_unique<FloatParam> (
-        juce::ParameterID { ParamIDs::lowGain, 1 },
-        "Low",
-        gainRange,
-        0.0f,
-        gainAttributes));
-
-    params.push_back (std::make_unique<FloatParam> (
-        juce::ParameterID { ParamIDs::midGain, 1 },
-        "Mid",
-        gainRange,
-        0.0f,
-        gainAttributes));
-
-    params.push_back (std::make_unique<FloatParam> (
-        juce::ParameterID { ParamIDs::highGain, 1 },
-        "High",
-        gainRange,
-        0.0f,
-        gainAttributes));
+    for (int i = 0; i < EightBandEQ::kNumBands; ++i)
+    {
+        params.push_back (std::make_unique<FloatParam> (
+            juce::ParameterID { ParamIDs::bandGain[static_cast<size_t> (i)], 1 },
+            EightBandEQ::kLabels[static_cast<size_t> (i)],
+            gainRange,
+            0.0f,
+            gainAttributes));
+    }
 
     params.push_back (std::make_unique<BoolParam> (
         juce::ParameterID { ParamIDs::bypass, 1 },
@@ -73,7 +62,7 @@ void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     juce::dsp::ProcessSpec spec {};
     spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
-    spec.numChannels      = 1; // each ThreeBandEQ instance handles one channel
+    spec.numChannels      = 1; // each EightBandEQ instance handles one channel
 
     eqLeft.prepare (spec);
     eqRight.prepare (spec);
@@ -105,8 +94,6 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const auto totalNumInputChannels  = getTotalNumInputChannels();
     const auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Zero out any output channels beyond the input bus so we don't leak
-    // garbage from earlier processing.
     for (auto ch = totalNumInputChannels; ch < totalNumOutputChannels; ++ch)
         buffer.clear (ch, 0, buffer.getNumSamples());
 
@@ -114,14 +101,15 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (bypassed)
         return;
 
-    const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
-    const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
-    const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+    std::array<float, EightBandEQ::kNumBands> gains {};
+    for (int i = 0; i < EightBandEQ::kNumBands; ++i)
+    {
+        auto* p = bandGainParams[static_cast<size_t> (i)];
+        gains[static_cast<size_t> (i)] = p != nullptr ? p->load() : 0.0f;
+    }
 
-    eqLeft .update (lowDb, midDb, highDb);
-    eqRight.update (lowDb, midDb, highDb);
-
-    const auto numSamples = buffer.getNumSamples();
+    eqLeft .update (gains);
+    eqRight.update (gains);
 
     if (totalNumInputChannels > 0)
     {
@@ -138,8 +126,6 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
         eqRight.process (ctx);
     }
-
-    juce::ignoreUnused (numSamples);
 }
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()

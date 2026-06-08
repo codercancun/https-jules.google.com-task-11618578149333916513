@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(NES_EQ
-    VERSION 0.1.0
+    VERSION 0.2.0
     LANGUAGES C CXX
-    DESCRIPTION "NES-EQ: 8-bit themed 3-band EQ audio plugin"
+    DESCRIPTION "NES-EQ: 8-bit themed 8-band EQ audio plugin"
 )
 
 set(CMAKE_CXX_STANDARD 20)
@@ -52,8 +52,8 @@ target_sources(NES_EQ PRIVATE
     source/PluginProcessor.h
     source/PluginEditor.cpp
     source/PluginEditor.h
-    source/ThreeBandEQ.cpp
-    source/ThreeBandEQ.h
+    source/EightBandEQ.cpp
+    source/EightBandEQ.h
     source/NESLookAndFeel.cpp
     source/NESLookAndFeel.h
     source/NESComponents.cpp
@@ -103,20 +103,51 @@ if(NES_EQ_BUILD_TESTS)
 
     target_sources(NES_EQ_Tests PRIVATE
         tests/TestsMain.cpp
-        tests/ThreeBandEQTests.cpp
-        source/ThreeBandEQ.cpp
-        source/ThreeBandEQ.h
+        tests/EightBandEQTests.cpp
+        tests/PluginProcessorTests.cpp
+        source/EightBandEQ.cpp
+        source/EightBandEQ.h
+        source/PluginProcessor.cpp
+        source/PluginProcessor.h
+        source/PluginEditor.cpp
+        source/PluginEditor.h
+        source/NESComponents.cpp
+        source/NESComponents.h
+        source/NESLookAndFeel.cpp
+        source/NESLookAndFeel.h
     )
 
     target_compile_definitions(NES_EQ_Tests PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        # Plugin metadata macros required by AudioProcessor sub-class
+        JucePlugin_Name="NES-EQ"
+        JucePlugin_Manufacturer="NESEQ"
+        JucePlugin_ManufacturerCode=0x4e734571
+        JucePlugin_PluginCode=0x4e734551
+        JucePlugin_IsSynth=0
+        JucePlugin_WantsMidiInput=0
+        JucePlugin_ProducesMidiOutput=0
+        JucePlugin_IsMidiEffect=0
+        JucePlugin_EditorRequiresKeyboardFocus=0
+        JucePlugin_Version=0.2.0
+        JucePlugin_VersionCode=0x200
+        JucePlugin_VersionString="0.2.0"
+        JucePlugin_VSTUniqueID=JucePlugin_PluginCode
+        JucePlugin_Vst3ComponentRegId="com.neseq.neseq"
+        JucePlugin_Vst3Category="Fx"
     )
 
     target_link_libraries(NES_EQ_Tests PRIVATE
         juce::juce_core
         juce::juce_dsp
         juce::juce_audio_basics
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_gui_basics
+        juce::juce_graphics
         PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

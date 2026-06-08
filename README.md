@@ -1,16 +1,21 @@
 # NES-EQ
 
-An 8-bit themed, real-time safe **3-band EQ** audio plugin built with
+An 8-bit themed, real-time safe **8-band EQ** audio plugin built with
 [JUCE](https://juce.com/). The UI is styled as a chunky NES / pixel-art
 control panel — LED power-meter style sliders for each band and a round
 red "A" button for bypass.
 
 ## Features
 
-- 3-band EQ DSP pipeline:
-    - **Low** – low-shelf filter at 200 Hz (±15 dB)
-    - **Mid** – peak/bell filter at 1 kHz, Q ≈ 0.9 (±15 dB)
-    - **High** – high-shelf filter at 5 kHz (±15 dB)
+- 8-band EQ DSP pipeline:
+    - **SUB** – low-shelf filter at 60 Hz (±15 dB)
+    - **BASS** – peak/bell filter at 150 Hz, Q ≈ 0.9 (±15 dB)
+    - **LO** – peak/bell filter at 400 Hz, Q ≈ 0.9 (±15 dB)
+    - **MID** – peak/bell filter at 800 Hz, Q ≈ 0.9 (±15 dB)
+    - **HI-M** – peak/bell filter at 1.6 kHz, Q ≈ 0.9 (±15 dB)
+    - **PRES** – peak/bell filter at 3.2 kHz, Q ≈ 0.9 (±15 dB)
+    - **BRIL** – peak/bell filter at 6.4 kHz, Q ≈ 0.9 (±15 dB)
+    - **AIR** – high-shelf filter at 12 kHz (±15 dB)
 - Retro NES-style pixel-art UI (classic 2C02 palette).
 - Power-meter style vertical sliders with lit LED segments.
 - "A" button bypass toggle.
@@ -31,12 +36,13 @@ CMakeLists.txt              Top level build – fetches JUCE and configures the 
 source/
     PluginProcessor.{h,cpp} AudioProcessor – parameters, prepare/process/state
     PluginEditor.{h,cpp}    AudioProcessorEditor – NES themed UI layout
-    ThreeBandEQ.{h,cpp}     Mono 3-band EQ (low shelf + peak + high shelf)
+    EightBandEQ.{h,cpp}     Mono 8-band EQ (low shelf + 6 peaks + high shelf)
     NESLookAndFeel.{h,cpp}  Palette + typeface + basic label drawing
     NESComponents.{h,cpp}   PowerMeterSlider and NESAButton custom components
 tests/
     TestsMain.cpp           Console entry point that runs juce::UnitTestRunner
-    ThreeBandEQTests.cpp    Frequency-response tests for the EQ DSP
+    EightBandEQTests.cpp    Frequency-response tests for the 8-band EQ DSP
+    PluginProcessorTests.cpp  Parameter, bus layout, bypass, state, and processing tests
 .github/workflows/ci.yml    Linux/macOS/Windows build + test matrix
 ```
 
@@ -77,10 +83,11 @@ cmake --build build --target NES_EQ_AU NES_EQ_VST3 --config Release
 
 ## Tests
 
-A small `juce::UnitTest` suite exercises the 3-band EQ DSP — checking a flat
-response at 0 dB, that each band boosts the right frequency region and leaves
-others alone, symmetry of boost vs. cut, and stability when `update` is called
-with unchanged gains (the coefficient cache). To build and run locally:
+A `juce::UnitTest` suite exercises the 8-band EQ DSP and the full
+`PluginProcessor` — checking flat response at 0 dB, that each band boosts
+the correct frequency region, shelf and peak filter shapes, symmetry of
+boost vs. cut, the coefficient cache, bus layouts, bypass, state
+serialization round-trip, and mono processing. To build and run locally:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -93,12 +100,17 @@ Ubuntu, macOS and Windows; macOS additionally builds the AU target.
 
 ## Parameters
 
-| ID          | Name   | Range          | Default | Notes                       |
-|-------------|--------|----------------|---------|-----------------------------|
-| `low_gain`  | Low    | −15 … +15 dB   | 0 dB    | Low-shelf, 200 Hz           |
-| `mid_gain`  | Mid    | −15 … +15 dB   | 0 dB    | Peak, 1 kHz, Q ≈ 0.9        |
-| `high_gain` | High   | −15 … +15 dB   | 0 dB    | High-shelf, 5 kHz           |
-| `bypass`    | Bypass | boolean        | off     | Fully bypasses the EQ chain |
+| ID           | Name  | Range          | Default | Notes                        |
+|--------------|-------|----------------|---------|------------------------------|
+| `band1_gain` | SUB   | −15 … +15 dB   | 0 dB    | Low-shelf, 60 Hz             |
+| `band2_gain` | BASS  | −15 … +15 dB   | 0 dB    | Peak, 150 Hz, Q ≈ 0.9       |
+| `band3_gain` | LO    | −15 … +15 dB   | 0 dB    | Peak, 400 Hz, Q ≈ 0.9       |
+| `band4_gain` | MID   | −15 … +15 dB   | 0 dB    | Peak, 800 Hz, Q ≈ 0.9       |
+| `band5_gain` | HI-M  | −15 … +15 dB   | 0 dB    | Peak, 1.6 kHz, Q ≈ 0.9      |
+| `band6_gain` | PRES  | −15 … +15 dB   | 0 dB    | Peak, 3.2 kHz, Q ≈ 0.9      |
+| `band7_gain` | BRIL  | −15 … +15 dB   | 0 dB    | Peak, 6.4 kHz, Q ≈ 0.9      |
+| `band8_gain` | AIR   | −15 … +15 dB   | 0 dB    | High-shelf, 12 kHz           |
+| `bypass`     | Bypass| boolean        | off     | Fully bypasses the EQ chain  |
 
 ## License
 

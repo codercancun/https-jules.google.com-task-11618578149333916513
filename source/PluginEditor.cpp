@@ -4,8 +4,8 @@ namespace neseq
 {
 namespace
 {
-constexpr int kDefaultWidth  = 480;
-constexpr int kDefaultHeight = 360;
+constexpr int kDefaultWidth  = 780;
+constexpr int kDefaultHeight = 400;
 } // namespace
 
 NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
@@ -14,16 +14,21 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    titleLabel.setText ("NES-EQ", juce::dontSendNotification);
+    titleLabel.setText ("NES-EQ  8-BAND", juce::dontSendNotification);
     titleLabel.setJustificationType (juce::Justification::centred);
     titleLabel.setColour (juce::Label::textColourId, NesPalette::yellow);
     titleLabel.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(),
                                      24.0f, juce::Font::bold));
     addAndMakeVisible (titleLabel);
 
-    addAndMakeVisible (lowSlider);
-    addAndMakeVisible (midSlider);
-    addAndMakeVisible (highSlider);
+    for (int i = 0; i < EightBandEQ::kNumBands; ++i)
+    {
+        bandSliders[static_cast<size_t> (i)] = std::make_unique<PowerMeterSlider> (
+            audioProcessor.getAPVTS(),
+            ParamIDs::bandGain[static_cast<size_t> (i)],
+            EightBandEQ::kLabels[static_cast<size_t> (i)]);
+        addAndMakeVisible (*bandSliders[static_cast<size_t> (i)]);
+    }
 
     addAndMakeVisible (bypassButton);
 
@@ -33,7 +38,7 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     addAndMakeVisible (bypassLabel);
 
     setResizable (true, true);
-    setResizeLimits (360, 280, 1024, 768);
+    setResizeLimits (640, 320, 1280, 800);
     setSize (kDefaultWidth, kDefaultHeight);
 }
 
@@ -49,17 +54,16 @@ void NESEQAudioProcessorEditor::paint (juce::Graphics& g)
 
 void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    // Deep-space backdrop reminiscent of the NES title-screen gradient.
     g.fillAll (NesPalette::black);
 
-    // Scanline-style horizontal pixel pattern to reinforce the CRT / 8-bit look.
+    // Scanline-style horizontal pixel pattern.
     g.setColour (juce::Colour (0xff101018));
     for (int y = 0; y < area.getHeight(); y += 4)
         g.fillRect (area.getX(), y, area.getWidth(), 1);
 
     drawTitleBar (g, area.removeFromTop (46));
 
-    // Chunky pixel frame around the plugin.
+    // Chunky pixel frame.
     auto frame = getLocalBounds();
     g.setColour (NesPalette::white);
     g.drawRect (frame, 2);
@@ -69,7 +73,6 @@ void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle
 
 void NESEQAudioProcessorEditor::drawTitleBar (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    // Red banner across the top, classic Mario-title-screen vibe.
     g.setColour (NesPalette::red);
     g.fillRect (area);
 
@@ -77,9 +80,9 @@ void NESEQAudioProcessorEditor::drawTitleBar (juce::Graphics& g, juce::Rectangle
     g.fillRect (area.removeFromBottom (4));
 
     // Pixel stars scattered across the banner.
-    juce::Random rng (0x4AE5); // deterministic layout
+    juce::Random rng (0x4AE5);
     g.setColour (NesPalette::yellow);
-    for (int i = 0; i < 14; ++i)
+    for (int i = 0; i < 20; ++i)
     {
         const auto x = rng.nextInt (area.getWidth());
         const auto y = rng.nextInt (area.getHeight());
@@ -93,22 +96,21 @@ void NESEQAudioProcessorEditor::resized()
 
     // Title banner
     titleLabel.setBounds (area.removeFromTop (40));
-
-    area.removeFromTop (8);
+    area.removeFromTop (4);
 
     // Bottom control strip: bypass button + label.
-    auto bottom = area.removeFromBottom (80);
-    auto bypassArea = bottom.removeFromRight (140).reduced (10);
+    auto bottom = area.removeFromBottom (70);
+    auto bypassArea = bottom.withSizeKeepingCentre (100, 70);
     bypassLabel.setBounds (bypassArea.removeFromBottom (18));
     const auto buttonSize = juce::jmin (bypassArea.getWidth(), bypassArea.getHeight());
     auto buttonBounds = bypassArea.withSizeKeepingCentre (buttonSize, buttonSize);
     bypassButton.setBounds (buttonBounds);
 
-    // Three band sliders evenly across the remainder.
-    auto sliderStrip = area.reduced (8);
-    const auto sliderW = sliderStrip.getWidth() / 3;
-    lowSlider .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
-    midSlider .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
-    highSlider.setBounds (sliderStrip.reduced (6, 0));
+    // Eight band sliders evenly across the remainder.
+    auto sliderStrip = area.reduced (4);
+    const auto sliderW = sliderStrip.getWidth() / EightBandEQ::kNumBands;
+    for (int i = 0; i < EightBandEQ::kNumBands; ++i)
+        bandSliders[static_cast<size_t> (i)]->setBounds (
+            sliderStrip.removeFromLeft (sliderW).reduced (3, 0));
 }
 } // namespace neseq

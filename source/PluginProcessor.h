@@ -4,7 +4,9 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_dsp/juce_dsp.h>
 
-#include "ThreeBandEQ.h"
+#include "EightBandEQ.h"
+
+#include <array>
 
 namespace neseq
 {
@@ -14,10 +16,11 @@ namespace neseq
 */
 namespace ParamIDs
 {
-    inline constexpr auto lowGain  = "low_gain";
-    inline constexpr auto midGain  = "mid_gain";
-    inline constexpr auto highGain = "high_gain";
-    inline constexpr auto bypass   = "bypass";
+    inline constexpr std::array<const char*, EightBandEQ::kNumBands> bandGain {{
+        "band1_gain", "band2_gain", "band3_gain", "band4_gain",
+        "band5_gain", "band6_gain", "band7_gain", "band8_gain"
+    }};
+    inline constexpr auto bypass = "bypass";
 }
 
 class NESEQAudioProcessor : public juce::AudioProcessor
@@ -63,14 +66,12 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    ThreeBandEQ eqLeft;
-    ThreeBandEQ eqRight;
+    EightBandEQ eqLeft;
+    EightBandEQ eqRight;
 
     // Cached raw parameter pointers for lock-free access on the audio thread.
-    std::atomic<float>* lowGainParam  = nullptr;
-    std::atomic<float>* midGainParam  = nullptr;
-    std::atomic<float>* highGainParam = nullptr;
-    std::atomic<float>* bypassParam   = nullptr;
+    std::array<std::atomic<float>*, EightBandEQ::kNumBands> bandGainParams {};
+    std::atomic<float>* bypassParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NESEQAudioProcessor)
 };

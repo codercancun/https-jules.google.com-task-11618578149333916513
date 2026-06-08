@@ -6,6 +6,9 @@
 #include "NESLookAndFeel.h"
 #include "PluginProcessor.h"
 
+#include <array>
+#include <memory>
+
 namespace neseq
 {
 class NESEQAudioProcessorEditor final : public juce::AudioProcessorEditor
@@ -21,9 +24,7 @@ private:
     NESEQAudioProcessor& audioProcessor;
     NESLookAndFeel lookAndFeel;
 
-    PowerMeterSlider lowSlider  { audioProcessor.getAPVTS(), ParamIDs::lowGain,  "LOW"  };
-    PowerMeterSlider midSlider  { audioProcessor.getAPVTS(), ParamIDs::midGain,  "MID"  };
-    PowerMeterSlider highSlider { audioProcessor.getAPVTS(), ParamIDs::highGain, "HIGH" };
+    std::array<std::unique_ptr<PowerMeterSlider>, EightBandEQ::kNumBands> bandSliders;
 
     NESAButton bypassButton { audioProcessor.getAPVTS(), ParamIDs::bypass };
 
