@@ -104,19 +104,50 @@ if(NES_EQ_BUILD_TESTS)
     target_sources(NES_EQ_Tests PRIVATE
         tests/TestsMain.cpp
         tests/ThreeBandEQTests.cpp
+        tests/PluginProcessorTests.cpp
         source/ThreeBandEQ.cpp
         source/ThreeBandEQ.h
+        source/PluginProcessor.cpp
+        source/PluginProcessor.h
+        source/PluginEditor.cpp
+        source/PluginEditor.h
+        source/NESComponents.cpp
+        source/NESComponents.h
+        source/NESLookAndFeel.cpp
+        source/NESLookAndFeel.h
     )
 
     target_compile_definitions(NES_EQ_Tests PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        # Plugin metadata macros required by AudioProcessor sub-class
+        JucePlugin_Name="NES-EQ"
+        JucePlugin_Manufacturer="NESEQ"
+        JucePlugin_ManufacturerCode=0x4e734571
+        JucePlugin_PluginCode=0x4e734551
+        JucePlugin_IsSynth=0
+        JucePlugin_WantsMidiInput=0
+        JucePlugin_ProducesMidiOutput=0
+        JucePlugin_IsMidiEffect=0
+        JucePlugin_EditorRequiresKeyboardFocus=0
+        JucePlugin_Version=0.1.0
+        JucePlugin_VersionCode=0x100
+        JucePlugin_VersionString="0.1.0"
+        JucePlugin_VSTUniqueID=JucePlugin_PluginCode
+        JucePlugin_Vst3ComponentRegId="com.neseq.neseq"
+        JucePlugin_Vst3Category="Fx"
     )
 
     target_link_libraries(NES_EQ_Tests PRIVATE
         juce::juce_core
         juce::juce_dsp
         juce::juce_audio_basics
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_gui_basics
+        juce::juce_graphics
         PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
