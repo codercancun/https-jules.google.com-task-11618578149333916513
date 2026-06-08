@@ -16,6 +16,15 @@ float dbToGain (float db)
 
 void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec)
 {
+    jassert (spec.sampleRate > 0.0);
+
+    if (spec.sampleRate <= 0.0)
+    {
+        DBG ("ThreeBandEQ::prepare called with invalid sample rate: "
+             + juce::String (spec.sampleRate));
+        return;
+    }
+
     sampleRate = spec.sampleRate;
     chain.prepare (spec);
 
@@ -67,22 +76,40 @@ void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
                                                           kLowFreqHz,
                                                           0.707f,
                                                           linearGain);
-            chain.get<Low>().coefficients = newCoefficients;
             break;
         case Mid:
             newCoefficients = Coefficients::makePeakFilter (sampleRate,
                                                             kMidFreqHz,
                                                             kMidQ,
                                                             linearGain);
-            chain.get<Mid>().coefficients = newCoefficients;
             break;
         case High:
             newCoefficients = Coefficients::makeHighShelf (sampleRate,
                                                            kHighFreqHz,
                                                            0.707f,
                                                            linearGain);
-            chain.get<High>().coefficients = newCoefficients;
             break;
+        default:
+            jassertfalse;
+            return;
+    }
+
+    if (newCoefficients == nullptr)
+    {
+        DBG ("ThreeBandEQ::updateBand – coefficient creation returned null for band "
+             + juce::String (static_cast<int> (band))
+             + " (sampleRate=" + juce::String (sampleRate)
+             + ", gainDb=" + juce::String (gainDb, 2) + ")");
+        jassertfalse;
+        return;
+    }
+
+    switch (band)
+    {
+        case Low:  chain.get<Low>().coefficients  = newCoefficients; break;
+        case Mid:  chain.get<Mid>().coefficients  = newCoefficients; break;
+        case High: chain.get<High>().coefficients = newCoefficients; break;
+        default:   break;
     }
 }
 } // namespace neseq

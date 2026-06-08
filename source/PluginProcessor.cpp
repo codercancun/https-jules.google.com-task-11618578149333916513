@@ -18,6 +18,11 @@ NESEQAudioProcessor::NESEQAudioProcessor()
     midGainParam  = apvts.getRawParameterValue (ParamIDs::midGain);
     highGainParam = apvts.getRawParameterValue (ParamIDs::highGain);
     bypassParam   = apvts.getRawParameterValue (ParamIDs::bypass);
+
+    jassert (lowGainParam  != nullptr);
+    jassert (midGainParam  != nullptr);
+    jassert (highGainParam != nullptr);
+    jassert (bypassParam   != nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -70,6 +75,17 @@ NESEQAudioProcessor::makeParameterLayout()
 
 void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    jassert (sampleRate > 0.0);
+    jassert (samplesPerBlock > 0);
+
+    if (sampleRate <= 0.0 || samplesPerBlock <= 0)
+    {
+        DBG ("NES-EQ: prepareToPlay called with invalid parameters (sampleRate="
+             + juce::String (sampleRate) + ", samplesPerBlock="
+             + juce::String (samplesPerBlock) + ")");
+        return;
+    }
+
     juce::dsp::ProcessSpec spec {};
     spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
@@ -149,20 +165,60 @@ juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()
 
 void NESEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto state = apvts.copyState(); state.isValid())
+    auto state = apvts.copyState();
+
+    if (! state.isValid())
     {
-        if (auto xml = state.createXml())
-            copyXmlToBinary (*xml, destData);
+        DBG ("NES-EQ: getStateInformation failed – ValueTree state is invalid");
+        jassertfalse;
+        return;
     }
+
+    auto xml = state.createXml();
+
+    if (xml == nullptr)
+    {
+        DBG ("NES-EQ: getStateInformation failed – could not serialise state to XML");
+        jassertfalse;
+        return;
+    }
+
+    copyXmlToBinary (*xml, destData);
 }
 
 void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    if (data == nullptr || sizeInBytes <= 0)
     {
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        DBG ("NES-EQ: setStateInformation called with invalid data (null or zero size)");
+        jassertfalse;
+        return;
     }
+
+    auto xml = getXmlFromBinary (data, sizeInBytes);
+
+    if (xml == nullptr)
+    {
+        DBG ("NES-EQ: setStateInformation failed – could not parse binary as XML");
+        return;
+    }
+
+    if (! xml->hasTagName (apvts.state.getType()))
+    {
+        DBG ("NES-EQ: setStateInformation failed – XML tag '" + xml->getTagName()
+             + "' does not match expected '" + apvts.state.getType().toString() + "'");
+        return;
+    }
+
+    auto newState = juce::ValueTree::fromXml (*xml);
+
+    if (! newState.isValid())
+    {
+        DBG ("NES-EQ: setStateInformation failed – ValueTree::fromXml returned invalid tree");
+        return;
+    }
+
+    apvts.replaceState (newState);
 }
 } // namespace neseq
 
