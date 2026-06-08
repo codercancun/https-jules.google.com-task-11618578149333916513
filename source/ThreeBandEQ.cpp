@@ -83,6 +83,9 @@ void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
                                                            linearGain);
             chain.get<High>().coefficients = newCoefficients;
             break;
+        default:
+            jassertfalse;
+            break;
     }
 }
 } // namespace neseq
