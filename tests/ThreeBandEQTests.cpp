@@ -175,6 +175,183 @@ public:
                 expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
                     "zero input should produce zero output");
         }
+
+        // ---- Additional edge-case tests ----
+
+        beginTest ("reset clears filter state to zero");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = kBlockSize;
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+            eq.update (12.0f, 6.0f, 9.0f);
+
+            // Feed signal to build up internal state.
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            for (int b = 0; b < 8; ++b)
+            {
+                auto* data = buffer.getWritePointer (0);
+                for (int i = 0; i < kBlockSize; ++i)
+                    data[i] = static_cast<float> (std::sin (
+                        juce::MathConstants<double>::twoPi * 200.0 * (b * kBlockSize + i) / kSampleRate));
+
+                juce::dsp::AudioBlock<float> block_ (buffer);
+                juce::dsp::ProcessContextReplacing<float> ctx (block_);
+                eq.process (ctx);
+            }
+
+            // Reset and process zero input — output should be zero.
+            eq.reset();
+            buffer.clear();
+            {
+                juce::dsp::AudioBlock<float> block_ (buffer);
+                juce::dsp::ProcessContextReplacing<float> ctx (block_);
+                eq.process (ctx);
+            }
+
+            for (int i = 0; i < kBlockSize; ++i)
+                expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
+                    "after reset, zero input should produce zero output");
+        }
+
+        beginTest ("works at multiple sample rates (22050, 44100, 96000)");
+        {
+            for (double sr : { 22050.0, 44100.0, 96000.0 })
+            {
+                ThreeBandEQ eq;
+                juce::dsp::ProcessSpec spec {};
+                spec.sampleRate       = sr;
+                spec.maximumBlockSize = kBlockSize;
+                spec.numChannels      = 1;
+                eq.prepare (spec);
+                eq.update (6.0f, 0.0f, 0.0f);
+
+                const double omega = juce::MathConstants<double>::twoPi * 50.0 / sr;
+                juce::AudioBuffer<float> buffer (1, kBlockSize);
+                double phase = 0.0;
+
+                float lastRms = 0.0f;
+                for (int b = 0; b < kNumBlocks; ++b)
+                {
+                    auto* data = buffer.getWritePointer (0);
+                    for (int i = 0; i < kBlockSize; ++i)
+                    {
+                        data[i] = static_cast<float> (std::sin (phase));
+                        phase += omega;
+                    }
+                    juce::dsp::AudioBlock<float> block_ (buffer);
+                    juce::dsp::ProcessContextReplacing<float> ctx (block_);
+                    eq.process (ctx);
+
+                    if (b >= kNumBlocks / 2)
+                    {
+                        double sumSq = 0.0;
+                        for (int i = 0; i < kBlockSize; ++i)
+                            sumSq += static_cast<double> (data[i]) * data[i];
+                        lastRms = static_cast<float> (std::sqrt (sumSq / kBlockSize));
+                    }
+                }
+
+                expectGreaterThan (lastRms, kUnitSineRms * 1.3f,
+                    "low-shelf boost should audibly boost 50 Hz at sample rate "
+                        + juce::String (sr));
+            }
+        }
+
+        beginTest ("extreme gains: ±15 dB produces expected magnitude");
+        {
+            ThreeBandEQ eq;
+            const auto maxBoostDb = measureGainDb (eq, 50.0f, 15.0f, 0.0f, 0.0f);
+            expectGreaterThan (maxBoostDb, 13.0f,
+                "low-shelf @50 Hz with max +15 dB should approach full boost");
+
+            ThreeBandEQ eq2;
+            const auto maxCutDb = measureGainDb (eq2, 50.0f, -15.0f, 0.0f, 0.0f);
+            expectLessThan (maxCutDb, -13.0f,
+                "low-shelf @50 Hz with max -15 dB should cut heavily");
+        }
+
+        beginTest ("all three bands active simultaneously");
+        {
+            ThreeBandEQ eq;
+            // Low boost, mid flat, high cut.
+            const auto lowDb  = measureGainDb (eq, 50.0f,   10.0f, 0.0f, -10.0f);
+            const auto midDb  = measureGainDb (eq, 1000.0f, 10.0f, 0.0f, -10.0f);
+            const auto highDb = measureGainDb (eq, 15000.0f, 10.0f, 0.0f, -10.0f);
+
+            expectGreaterThan (lowDb, 8.0f,
+                "50 Hz should be boosted when low=+10 dB even with high=-10 dB");
+            expectLessThan (highDb, -6.0f,
+                "15 kHz should be cut when high=-10 dB even with low=+10 dB");
+            // 1 kHz should be only modestly affected — the low shelf tail and
+            // high shelf tail partially overlap there.
+            expectWithinAbsoluteError (midDb, 0.0f, 4.0f,
+                "1 kHz should be near flat with low=+10, mid=0, high=-10");
+        }
+
+        beginTest ("re-prepare resets and allows processing at a new sample rate");
+        {
+            ThreeBandEQ eq;
+
+            // First prepare at 44100.
+            auto gainA = measureGainDb (eq, 200.0f, 12.0f, 0.0f, 0.0f);
+            expectGreaterThan (gainA, 4.0f,
+                "initial prepare: low-shelf should boost at 200 Hz");
+
+            // Re-prepare at 96000 and measure again.
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = 96000.0;
+            spec.maximumBlockSize = kBlockSize;
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+
+            // measureRms internally calls prepare with kSampleRate (48000), so
+            // we manually run at 96000 here.
+            eq.update (12.0f, 0.0f, 0.0f);
+            const double omega = juce::MathConstants<double>::twoPi * 200.0 / 96000.0;
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            double phase = 0.0;
+            float lastRms = 0.0f;
+
+            for (int b = 0; b < kNumBlocks; ++b)
+            {
+                auto* data = buffer.getWritePointer (0);
+                for (int i = 0; i < kBlockSize; ++i)
+                {
+                    data[i] = static_cast<float> (std::sin (phase));
+                    phase += omega;
+                }
+                juce::dsp::AudioBlock<float> block_ (buffer);
+                juce::dsp::ProcessContextReplacing<float> ctx (block_);
+                eq.process (ctx);
+
+                if (b >= kNumBlocks / 2)
+                {
+                    double sumSq = 0.0;
+                    for (int i = 0; i < kBlockSize; ++i)
+                        sumSq += static_cast<double> (data[i]) * data[i];
+                    lastRms = static_cast<float> (std::sqrt (sumSq / kBlockSize));
+                }
+            }
+
+            const auto gainB = juce::Decibels::gainToDecibels (lastRms / kUnitSineRms);
+            expectGreaterThan (gainB, 4.0f,
+                "after re-prepare at 96 kHz, low-shelf should still boost at 200 Hz");
+        }
+
+        beginTest ("mid cut attenuates 1 kHz and leaves 50 Hz alone");
+        {
+            ThreeBandEQ eq;
+            const auto midDb  = measureGainDb (eq, 1000.0f, 0.0f, -12.0f, 0.0f);
+            const auto lowDb  = measureGainDb (eq, 50.0f,   0.0f, -12.0f, 0.0f);
+
+            expectLessThan (midDb, -10.0f,
+                "peak @1 kHz with -12 dB mid gain should cut close to full");
+            expectWithinAbsoluteError (lowDb, 0.0f, 1.5f,
+                "peak mid cut should not significantly affect 50 Hz");
+        }
     }
 };
 
