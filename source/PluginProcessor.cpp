@@ -6,6 +6,21 @@ namespace neseq
 namespace
 {
 constexpr float kGainRangeDb = 15.0f;
+
+inline float loadParam (std::atomic<float>* param, float fallback = 0.0f)
+{
+    return param != nullptr ? param->load() : fallback;
+}
+
+inline void processChannel (ThreeBandEQ& eq,
+                            juce::AudioBuffer<float>& buffer,
+                            int channelIndex)
+{
+    auto block = juce::dsp::AudioBlock<float> (buffer)
+                     .getSubsetChannelBlock (static_cast<size_t> (channelIndex), 1);
+    juce::dsp::ProcessContextReplacing<float> ctx (block);
+    eq.process (ctx);
+}
 } // namespace
 
 NESEQAudioProcessor::NESEQAudioProcessor()
@@ -114,32 +129,18 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (bypassed)
         return;
 
-    const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
-    const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
-    const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+    const float lowDb  = loadParam (lowGainParam);
+    const float midDb  = loadParam (midGainParam);
+    const float highDb = loadParam (highGainParam);
 
     eqLeft .update (lowDb, midDb, highDb);
     eqRight.update (lowDb, midDb, highDb);
 
-    const auto numSamples = buffer.getNumSamples();
-
     if (totalNumInputChannels > 0)
-    {
-        auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
-                             .getSubsetChannelBlock (0, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
-        eqLeft.process (ctx);
-    }
+        processChannel (eqLeft, buffer, 0);
 
     if (totalNumInputChannels > 1)
-    {
-        auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
-                              .getSubsetChannelBlock (1, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
-        eqRight.process (ctx);
-    }
-
-    juce::ignoreUnused (numSamples);
+        processChannel (eqRight, buffer, 1);
 }
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()

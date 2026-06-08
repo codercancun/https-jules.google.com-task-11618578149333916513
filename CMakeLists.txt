@@ -58,6 +58,7 @@ target_sources(NES_EQ PRIVATE
     source/NESLookAndFeel.h
     source/NESComponents.cpp
     source/NESComponents.h
+    source/NESDrawUtils.h
 )
 
 target_compile_definitions(NES_EQ PUBLIC

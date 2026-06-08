@@ -1,4 +1,5 @@
 #include "NESLookAndFeel.h"
+#include "NESDrawUtils.h"
 
 namespace neseq
 {
@@ -6,8 +7,7 @@ NESLookAndFeel::NESLookAndFeel()
 {
     // Keep a monospaced, lightly kerned font family so text retains a pixel
     // feel even without shipping a custom bitmap font.
-    pixelTypeface = juce::Font (juce::Font::getDefaultMonospacedFontName(),
-                                 14.0f, juce::Font::bold).getTypefacePtr();
+    pixelTypeface = DrawUtils::makeNESFont (14.0f).getTypefacePtr();
 
     // Overall palette tweaks for built-in components.
     setColour (juce::ResizableWindow::backgroundColourId, NesPalette::black);
