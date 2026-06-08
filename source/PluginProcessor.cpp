@@ -18,6 +18,11 @@ NESEQAudioProcessor::NESEQAudioProcessor()
     midGainParam  = apvts.getRawParameterValue (ParamIDs::midGain);
     highGainParam = apvts.getRawParameterValue (ParamIDs::highGain);
     bypassParam   = apvts.getRawParameterValue (ParamIDs::bypass);
+
+    jassert (lowGainParam  != nullptr);
+    jassert (midGainParam  != nullptr);
+    jassert (highGainParam != nullptr);
+    jassert (bypassParam   != nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -70,6 +75,17 @@ NESEQAudioProcessor::makeParameterLayout()
 
 void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    jassert (sampleRate > 0.0);
+    jassert (samplesPerBlock > 0);
+
+    if (sampleRate <= 0.0 || samplesPerBlock <= 0)
+    {
+        DBG ("NES-EQ: prepareToPlay called with invalid parameters (sampleRate="
+             + juce::String (sampleRate) + ", samplesPerBlock="
+             + juce::String (samplesPerBlock) + ")");
+        return;
+    }
+
     juce::dsp::ProcessSpec spec {};
     spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
@@ -77,6 +93,9 @@ void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     eqLeft.prepare (spec);
     eqRight.prepare (spec);
+
+    bypassCrossfader.prepare (sampleRate, getTotalNumOutputChannels(),
+                              samplesPerBlock);
 }
 
 void NESEQAudioProcessor::releaseResources()
@@ -111,35 +130,38 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.clear (ch, 0, buffer.getNumSamples());
 
     const bool bypassed = bypassParam != nullptr && bypassParam->load() > 0.5f;
-    if (bypassed)
-        return;
+    bypassCrossfader.setBypassed (bypassed);
 
-    const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
-    const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
-    const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+    if (bypassCrossfader.shouldCaptureDry())
+        bypassCrossfader.captureDry (buffer);
 
-    eqLeft .update (lowDb, midDb, highDb);
-    eqRight.update (lowDb, midDb, highDb);
-
-    const auto numSamples = buffer.getNumSamples();
-
-    if (totalNumInputChannels > 0)
+    if (bypassCrossfader.shouldRunEffect())
     {
-        auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
-                             .getSubsetChannelBlock (0, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
-        eqLeft.process (ctx);
+        const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
+        const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
+        const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+
+        eqLeft .update (lowDb, midDb, highDb);
+        eqRight.update (lowDb, midDb, highDb);
+
+        if (totalNumInputChannels > 0)
+        {
+            auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
+                                 .getSubsetChannelBlock (0, 1);
+            juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
+            eqLeft.process (ctx);
+        }
+
+        if (totalNumInputChannels > 1)
+        {
+            auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
+                                  .getSubsetChannelBlock (1, 1);
+            juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
+            eqRight.process (ctx);
+        }
     }
 
-    if (totalNumInputChannels > 1)
-    {
-        auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
-                              .getSubsetChannelBlock (1, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
-        eqRight.process (ctx);
-    }
-
-    juce::ignoreUnused (numSamples);
+    bypassCrossfader.mix (buffer);
 }
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()
@@ -149,20 +171,60 @@ juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()
 
 void NESEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto state = apvts.copyState(); state.isValid())
+    auto state = apvts.copyState();
+
+    if (! state.isValid())
     {
-        if (auto xml = state.createXml())
-            copyXmlToBinary (*xml, destData);
+        DBG ("NES-EQ: getStateInformation failed - ValueTree state is invalid");
+        jassertfalse;
+        return;
     }
+
+    auto xml = state.createXml();
+
+    if (xml == nullptr)
+    {
+        DBG ("NES-EQ: getStateInformation failed - could not serialise state to XML");
+        jassertfalse;
+        return;
+    }
+
+    copyXmlToBinary (*xml, destData);
 }
 
 void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    if (data == nullptr || sizeInBytes <= 0)
     {
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        DBG ("NES-EQ: setStateInformation called with invalid data (null or zero size)");
+        jassertfalse;
+        return;
     }
+
+    auto xml = getXmlFromBinary (data, sizeInBytes);
+
+    if (xml == nullptr)
+    {
+        DBG ("NES-EQ: setStateInformation failed - could not parse binary as XML");
+        return;
+    }
+
+    if (! xml->hasTagName (apvts.state.getType()))
+    {
+        DBG ("NES-EQ: setStateInformation failed - XML tag '" + xml->getTagName()
+             + "' does not match expected '" + apvts.state.getType().toString() + "'");
+        return;
+    }
+
+    auto newState = juce::ValueTree::fromXml (*xml);
+
+    if (! newState.isValid())
+    {
+        DBG ("NES-EQ: setStateInformation failed - ValueTree::fromXml returned invalid tree");
+        return;
+    }
+
+    apvts.replaceState (newState);
 }
 } // namespace neseq
 

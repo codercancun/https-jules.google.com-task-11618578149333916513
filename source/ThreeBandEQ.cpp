@@ -16,16 +16,35 @@ float dbToGain (float db)
 
 void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec)
 {
+    jassert (spec.sampleRate > 0.0);
+
+    if (spec.sampleRate <= 0.0)
+        return;
+
     sampleRate = spec.sampleRate;
     chain.prepare (spec);
 
-    // Force a rebuild on the next call to ``update`` by nudging the cached
-    // gains off the default so the epsilon check triggers.
+    const double rampSeconds = juce::jmax (0.0f, smoothingTimeSec);
+
+    const float targetLow  = smoothedLow .getTargetValue();
+    const float targetMid  = smoothedMid .getTargetValue();
+    const float targetHigh = smoothedHigh.getTargetValue();
+
+    smoothedLow .reset (sampleRate, rampSeconds);
+    smoothedMid .reset (sampleRate, rampSeconds);
+    smoothedHigh.reset (sampleRate, rampSeconds);
+
+    // Snap the smoothers to whatever target the host last requested so we
+    // don't sweep audibly on the first block after prepare().
+    smoothedLow .setCurrentAndTargetValue (targetLow);
+    smoothedMid .setCurrentAndTargetValue (targetMid);
+    smoothedHigh.setCurrentAndTargetValue (targetHigh);
+
+    // Force a coefficient rebuild against the current (post-reset) gains.
     currentLowDb  = std::numeric_limits<float>::infinity();
     currentMidDb  = std::numeric_limits<float>::infinity();
     currentHighDb = std::numeric_limits<float>::infinity();
-
-    update (0.0f, 0.0f, 0.0f);
+    advanceSmoothersAndRebuild (0);
 }
 
 void ThreeBandEQ::reset()
@@ -35,53 +54,83 @@ void ThreeBandEQ::reset()
 
 void ThreeBandEQ::update (float lowGainDb, float midGainDb, float highGainDb)
 {
-    if (std::abs (lowGainDb - currentLowDb) > kGainEpsilonDb)
+    smoothedLow .setTargetValue (lowGainDb);
+    smoothedMid .setTargetValue (midGainDb);
+    smoothedHigh.setTargetValue (highGainDb);
+}
+
+void ThreeBandEQ::snap (float lowGainDb, float midGainDb, float highGainDb)
+{
+    smoothedLow .setCurrentAndTargetValue (lowGainDb);
+    smoothedMid .setCurrentAndTargetValue (midGainDb);
+    smoothedHigh.setCurrentAndTargetValue (highGainDb);
+    advanceSmoothersAndRebuild (0);
+}
+
+void ThreeBandEQ::setSmoothingTime (float seconds) noexcept
+{
+    smoothingTimeSec = juce::jmax (0.0f, seconds);
+}
+
+void ThreeBandEQ::advanceSmoothersAndRebuild (int numSamples)
+{
+    const float lowDb  = numSamples > 0 ? smoothedLow .skip (numSamples)
+                                        : smoothedLow .getCurrentValue();
+    const float midDb  = numSamples > 0 ? smoothedMid .skip (numSamples)
+                                        : smoothedMid .getCurrentValue();
+    const float highDb = numSamples > 0 ? smoothedHigh.skip (numSamples)
+                                        : smoothedHigh.getCurrentValue();
+
+    if (std::abs (lowDb - currentLowDb) > kGainEpsilonDb)
     {
-        updateBand (Low, lowGainDb);
-        currentLowDb = lowGainDb;
+        rebuildBand (Low, lowDb);
+        currentLowDb = lowDb;
     }
 
-    if (std::abs (midGainDb - currentMidDb) > kGainEpsilonDb)
+    if (std::abs (midDb - currentMidDb) > kGainEpsilonDb)
     {
-        updateBand (Mid, midGainDb);
-        currentMidDb = midGainDb;
+        rebuildBand (Mid, midDb);
+        currentMidDb = midDb;
     }
 
-    if (std::abs (highGainDb - currentHighDb) > kGainEpsilonDb)
+    if (std::abs (highDb - currentHighDb) > kGainEpsilonDb)
     {
-        updateBand (High, highGainDb);
-        currentHighDb = highGainDb;
+        rebuildBand (High, highDb);
+        currentHighDb = highDb;
     }
 }
 
-void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
+void ThreeBandEQ::rebuildBand (BandIndex band, float gainDb)
 {
     const auto linearGain = dbToGain (gainDb);
 
-    juce::ReferenceCountedObjectPtr<Coefficients> newCoefficients;
-
+    // Write directly into the existing Coefficients object to avoid heap
+    // allocation on the audio thread.
     switch (band)
     {
         case Low:
-            newCoefficients = Coefficients::makeLowShelf (sampleRate,
-                                                          kLowFreqHz,
-                                                          0.707f,
-                                                          linearGain);
-            chain.get<Low>().coefficients = newCoefficients;
+            *chain.get<Low>().coefficients =
+                juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (sampleRate,
+                                                                        kLowFreqHz,
+                                                                        0.707f,
+                                                                        linearGain);
             break;
         case Mid:
-            newCoefficients = Coefficients::makePeakFilter (sampleRate,
-                                                            kMidFreqHz,
-                                                            kMidQ,
-                                                            linearGain);
-            chain.get<Mid>().coefficients = newCoefficients;
+            *chain.get<Mid>().coefficients =
+                juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate,
+                                                                          kMidFreqHz,
+                                                                          kMidQ,
+                                                                          linearGain);
             break;
         case High:
-            newCoefficients = Coefficients::makeHighShelf (sampleRate,
-                                                           kHighFreqHz,
-                                                           0.707f,
-                                                           linearGain);
-            chain.get<High>().coefficients = newCoefficients;
+            *chain.get<High>().coefficients =
+                juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate,
+                                                                         kHighFreqHz,
+                                                                         0.707f,
+                                                                         linearGain);
+            break;
+        default:
+            jassertfalse;
             break;
     }
 }
