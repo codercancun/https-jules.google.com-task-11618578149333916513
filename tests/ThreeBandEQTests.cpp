@@ -175,6 +175,68 @@ public:
                 expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
                     "zero input should produce zero output");
         }
+
+        beginTest ("smoothing converges to target gain");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = kBlockSize;
+            spec.numChannels      = 1;
+            eq.prepare (spec, 0.02f);
+
+            eq.update (6.0f, 0.0f, 0.0f);
+
+            // Process enough blocks to let smoothing settle (20 ms = 960 samples).
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            for (int block = 0; block < 8; ++block)
+            {
+                auto* data = buffer.getWritePointer (0);
+                for (int i = 0; i < kBlockSize; ++i)
+                    data[i] = 0.0f;
+                juce::dsp::AudioBlock<float> blk (buffer);
+                juce::dsp::ProcessContextReplacing<float> ctx (blk);
+                eq.process (ctx);
+            }
+
+            expect (! eq.isSmoothing(),
+                "smoothing should have settled after enough samples");
+
+            // Now verify final gain at 50 Hz matches expected boost.
+            const auto gainDb = measureGainDb (eq, 50.0f, 6.0f, 0.0f, 0.0f);
+            expectGreaterThan (gainDb, 4.0f,
+                "low shelf at +6 dB should boost 50 Hz after smoothing settles");
+        }
+
+        beginTest ("reset clears filter state without crashing");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = kBlockSize;
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+            eq.update (12.0f, -5.0f, 8.0f);
+
+            // Process a block to get some state into the filters.
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            for (int i = 0; i < kBlockSize; ++i)
+                buffer.setSample (0, i, 0.5f);
+            juce::dsp::AudioBlock<float> blk (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx (blk);
+            eq.process (ctx);
+
+            // Reset and process silence — should produce zero.
+            eq.reset();
+            buffer.clear();
+            juce::dsp::AudioBlock<float> blk2 (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx2 (blk2);
+            eq.process (ctx2);
+
+            for (int i = 0; i < kBlockSize; ++i)
+                expect (std::abs (buffer.getSample (0, i)) < 1.0e-5f,
+                    "after reset, zero input should produce zero output");
+        }
     }
 };
 

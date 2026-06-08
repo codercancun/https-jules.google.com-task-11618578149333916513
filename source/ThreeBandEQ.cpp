@@ -4,28 +4,34 @@ namespace neseq
 {
 namespace
 {
-// A gain change smaller than this (in dB) is treated as a no-op so we skip the
-// coefficient rebuild. Keeps things lock free and allocation free.
-constexpr float kGainEpsilonDb = 1.0e-3f;
-
 float dbToGain (float db)
 {
     return juce::Decibels::decibelsToGain (db, -96.0f);
 }
 } // namespace
 
-void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec)
+void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec, float rampSeconds)
 {
     sampleRate = spec.sampleRate;
     chain.prepare (spec);
 
-    // Force a rebuild on the next call to ``update`` by nudging the cached
-    // gains off the default so the epsilon check triggers.
+    const double ramp = static_cast<double> (juce::jmax (0.0f, rampSeconds));
+
+    smoothedLow .reset (sampleRate, ramp);
+    smoothedMid .reset (sampleRate, ramp);
+    smoothedHigh.reset (sampleRate, ramp);
+
+    // Force a rebuild on the next call to update.
     currentLowDb  = std::numeric_limits<float>::infinity();
     currentMidDb  = std::numeric_limits<float>::infinity();
     currentHighDb = std::numeric_limits<float>::infinity();
 
     update (0.0f, 0.0f, 0.0f);
+
+    // Skip the ramp on the initial state so we start at 0 dB immediately.
+    smoothedLow .skip (static_cast<int> (sampleRate * ramp));
+    smoothedMid .skip (static_cast<int> (sampleRate * ramp));
+    smoothedHigh.skip (static_cast<int> (sampleRate * ramp));
 }
 
 void ThreeBandEQ::reset()
@@ -37,21 +43,52 @@ void ThreeBandEQ::update (float lowGainDb, float midGainDb, float highGainDb)
 {
     if (std::abs (lowGainDb - currentLowDb) > kGainEpsilonDb)
     {
-        updateBand (Low, lowGainDb);
+        smoothedLow.setTargetValue (lowGainDb);
         currentLowDb = lowGainDb;
     }
 
     if (std::abs (midGainDb - currentMidDb) > kGainEpsilonDb)
     {
-        updateBand (Mid, midGainDb);
+        smoothedMid.setTargetValue (midGainDb);
         currentMidDb = midGainDb;
     }
 
     if (std::abs (highGainDb - currentHighDb) > kGainEpsilonDb)
     {
-        updateBand (High, highGainDb);
+        smoothedHigh.setTargetValue (highGainDb);
         currentHighDb = highGainDb;
     }
+
+    // If not smoothing, rebuild coefficients at the current target immediately.
+    if (! isSmoothing())
+    {
+        updateBand (Low,  smoothedLow.getCurrentValue());
+        updateBand (Mid,  smoothedMid.getCurrentValue());
+        updateBand (High, smoothedHigh.getCurrentValue());
+    }
+}
+
+void ThreeBandEQ::advanceSmoothing()
+{
+    const float lowDb  = smoothedLow.getNextValue();
+    const float midDb  = smoothedMid.getNextValue();
+    const float highDb = smoothedHigh.getNextValue();
+
+    updateBand (Low,  lowDb);
+    updateBand (Mid,  midDb);
+    updateBand (High, highDb);
+}
+
+float ThreeBandEQ::processSingleSample (float sample)
+{
+    auto& lowFilter  = chain.get<Low>();
+    auto& midFilter  = chain.get<Mid>();
+    auto& highFilter = chain.get<High>();
+
+    sample = lowFilter.processSample (sample);
+    sample = midFilter.processSample (sample);
+    sample = highFilter.processSample (sample);
+    return sample;
 }
 
 void ThreeBandEQ::updateBand (BandIndex band, float gainDb)

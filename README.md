@@ -14,6 +14,10 @@ red "A" button for bypass.
 - Retro NES-style pixel-art UI (classic 2C02 palette).
 - Power-meter style vertical sliders with lit LED segments.
 - "A" button bypass toggle.
+- **Parameter smoothing** (20 ms linear ramp) — eliminates zipper noise
+  during gain automation.
+- **Click-free bypass** — 15 ms wet/dry crossfade prevents audible pops
+  when toggling the bypass button.
 - Real-time safe audio processing:
     - No heap allocations on the audio thread.
     - Coefficients are only rebuilt when a band's target gain actually changes.
@@ -29,14 +33,16 @@ red "A" button for bypass.
 ```
 CMakeLists.txt              Top level build – fetches JUCE and configures the plugin
 source/
-    PluginProcessor.{h,cpp} AudioProcessor – parameters, prepare/process/state
-    PluginEditor.{h,cpp}    AudioProcessorEditor – NES themed UI layout
-    ThreeBandEQ.{h,cpp}     Mono 3-band EQ (low shelf + peak + high shelf)
-    NESLookAndFeel.{h,cpp}  Palette + typeface + basic label drawing
-    NESComponents.{h,cpp}   PowerMeterSlider and NESAButton custom components
+    PluginProcessor.{h,cpp}    AudioProcessor – parameters, prepare/process/state
+    PluginEditor.{h,cpp}       AudioProcessorEditor – NES themed UI layout
+    ThreeBandEQ.{h,cpp}        Mono 3-band EQ with smoothed gain parameters
+    BypassCrossfader.{h,cpp}   Click-free wet/dry crossfade for bypass
+    NESLookAndFeel.{h,cpp}     Palette + typeface + basic label drawing
+    NESComponents.{h,cpp}      PowerMeterSlider and NESAButton custom components
 tests/
-    TestsMain.cpp           Console entry point that runs juce::UnitTestRunner
-    ThreeBandEQTests.cpp    Frequency-response tests for the EQ DSP
+    TestsMain.cpp              Console entry point that runs juce::UnitTestRunner
+    ThreeBandEQTests.cpp       Frequency-response + smoothing tests for the EQ
+    BypassCrossfaderTests.cpp  Crossfade behaviour and continuity tests
 .github/workflows/ci.yml    Linux/macOS/Windows build + test matrix
 ```
 
@@ -77,10 +83,14 @@ cmake --build build --target NES_EQ_AU NES_EQ_VST3 --config Release
 
 ## Tests
 
-A small `juce::UnitTest` suite exercises the 3-band EQ DSP — checking a flat
-response at 0 dB, that each band boosts the right frequency region and leaves
-others alone, symmetry of boost vs. cut, and stability when `update` is called
-with unchanged gains (the coefficient cache). To build and run locally:
+The `juce::UnitTest` suite exercises:
+
+- **ThreeBandEQ**: flat response at 0 dB, per-band frequency selectivity, boost/cut
+  symmetry, coefficient-cache stability, smoothing convergence, and reset correctness.
+- **BypassCrossfader**: dry passthrough when bypassed, wet passthrough when active,
+  sample-to-sample continuity during crossfade, and settled-state detection.
+
+To build and run locally:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
