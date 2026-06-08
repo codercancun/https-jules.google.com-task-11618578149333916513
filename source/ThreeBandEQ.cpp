@@ -35,23 +35,18 @@ void ThreeBandEQ::reset()
 
 void ThreeBandEQ::update (float lowGainDb, float midGainDb, float highGainDb)
 {
-    if (std::abs (lowGainDb - currentLowDb) > kGainEpsilonDb)
+    auto updateIfChanged = [&] (BandIndex band, float newDb, float& cached)
     {
-        updateBand (Low, lowGainDb);
-        currentLowDb = lowGainDb;
-    }
+        if (std::abs (newDb - cached) > kGainEpsilonDb)
+        {
+            updateBand (band, newDb);
+            cached = newDb;
+        }
+    };
 
-    if (std::abs (midGainDb - currentMidDb) > kGainEpsilonDb)
-    {
-        updateBand (Mid, midGainDb);
-        currentMidDb = midGainDb;
-    }
-
-    if (std::abs (highGainDb - currentHighDb) > kGainEpsilonDb)
-    {
-        updateBand (High, highGainDb);
-        currentHighDb = highGainDb;
-    }
+    updateIfChanged (Low,  lowGainDb,  currentLowDb);
+    updateIfChanged (Mid,  midGainDb,  currentMidDb);
+    updateIfChanged (High, highGainDb, currentHighDb);
 }
 
 void ThreeBandEQ::updateBand (BandIndex band, float gainDb)

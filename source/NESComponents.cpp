@@ -1,4 +1,5 @@
 #include "NESComponents.h"
+#include "NESDrawUtils.h"
 
 namespace neseq
 {
@@ -22,16 +23,10 @@ PowerMeterSlider::PowerMeterSlider (juce::AudioProcessorValueTreeState& apvts,
 
     addAndMakeVisible (slider);
 
-    valueLabel.setJustificationType (juce::Justification::centred);
-    valueLabel.setInterceptsMouseClicks (false, false);
-    valueLabel.setColour (juce::Label::textColourId, NesPalette::yellow);
-    addAndMakeVisible (valueLabel);
+    DrawUtils::configureLabel (valueLabel, *this, NesPalette::yellow);
 
     bandLabel.setText (label, juce::dontSendNotification);
-    bandLabel.setJustificationType (juce::Justification::centred);
-    bandLabel.setInterceptsMouseClicks (false, false);
-    bandLabel.setColour (juce::Label::textColourId, NesPalette::white);
-    addAndMakeVisible (bandLabel);
+    DrawUtils::configureLabel (bandLabel, *this, NesPalette::white);
 
     slider.onValueChange = [this]
     {
@@ -66,11 +61,7 @@ void PowerMeterSlider::paintSegments (juce::Graphics& g, juce::Rectangle<int> ar
     g.setColour (NesPalette::darkGrey);
     g.fillRect (area);
 
-    // Chunky pixel border (two pixels of light + two pixels of shadow).
-    g.setColour (NesPalette::black);
-    g.drawRect (area, 2);
-    g.setColour (NesPalette::grey);
-    g.drawRect (area.reduced (2), 2);
+    DrawUtils::drawPixelBorder (g, area);
 
     const auto segmentsArea = area.reduced (6);
     if (segmentsArea.getHeight() <= 0)
@@ -173,10 +164,7 @@ void NESAButton::paintButton (juce::Graphics& g,
 
     // Letter "A" in white, pixelated
     g.setColour (NesPalette::white);
-    auto font = juce::Font (juce::Font::getDefaultMonospacedFontName(),
-                            bounds.getHeight() * 0.55f,
-                            juce::Font::bold);
-    g.setFont (font);
+    g.setFont (DrawUtils::makeNESFont (bounds.getHeight() * 0.55f));
     g.drawFittedText ("A",
                       getLocalBounds(),
                       juce::Justification::centred,

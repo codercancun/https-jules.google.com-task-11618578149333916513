@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "NESDrawUtils.h"
 
 namespace neseq
 {
@@ -15,11 +16,8 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     setLookAndFeel (&lookAndFeel);
 
     titleLabel.setText ("NES-EQ", juce::dontSendNotification);
-    titleLabel.setJustificationType (juce::Justification::centred);
-    titleLabel.setColour (juce::Label::textColourId, NesPalette::yellow);
-    titleLabel.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(),
-                                     24.0f, juce::Font::bold));
-    addAndMakeVisible (titleLabel);
+    titleLabel.setFont (DrawUtils::makeNESFont (24.0f));
+    DrawUtils::configureLabel (titleLabel, *this, NesPalette::yellow);
 
     addAndMakeVisible (lowSlider);
     addAndMakeVisible (midSlider);
@@ -28,9 +26,7 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     addAndMakeVisible (bypassButton);
 
     bypassLabel.setText ("BYPASS", juce::dontSendNotification);
-    bypassLabel.setJustificationType (juce::Justification::centred);
-    bypassLabel.setColour (juce::Label::textColourId, NesPalette::white);
-    addAndMakeVisible (bypassLabel);
+    DrawUtils::configureLabel (bypassLabel, *this, NesPalette::white);
 
     setResizable (true, true);
     setResizeLimits (360, 280, 1024, 768);
@@ -60,11 +56,7 @@ void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle
     drawTitleBar (g, area.removeFromTop (46));
 
     // Chunky pixel frame around the plugin.
-    auto frame = getLocalBounds();
-    g.setColour (NesPalette::white);
-    g.drawRect (frame, 2);
-    g.setColour (NesPalette::grey);
-    g.drawRect (frame.reduced (2), 2);
+    DrawUtils::drawPixelBorder (g, getLocalBounds(), NesPalette::white, NesPalette::grey);
 }
 
 void NESEQAudioProcessorEditor::drawTitleBar (juce::Graphics& g, juce::Rectangle<int> area)
