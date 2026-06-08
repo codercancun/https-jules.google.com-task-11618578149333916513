@@ -13,10 +13,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Fetch JUCE
 include(FetchContent)
 set(JUCE_VERSION "7.0.12" CACHE STRING "JUCE release tag to fetch")
+# Pin to the exact commit for tag 7.0.12 to prevent supply-chain attacks via
+# force-pushed tags.
+set(JUCE_COMMIT_SHA "4f43011b96eb0636104cb3e433894cda98243626")
 FetchContent_Declare(
     juce
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG ${JUCE_VERSION}
+    GIT_TAG ${JUCE_COMMIT_SHA}
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(juce)

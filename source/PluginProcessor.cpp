@@ -72,7 +72,7 @@ void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::dsp::ProcessSpec spec {};
     spec.sampleRate       = sampleRate;
-    spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
+    spec.maximumBlockSize = static_cast<juce::uint32> (juce::jmax (0, samplesPerBlock));
     spec.numChannels      = 1; // each ThreeBandEQ instance handles one channel
 
     eqLeft.prepare (spec);
@@ -158,6 +158,9 @@ void NESEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 
 void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    if (data == nullptr || sizeInBytes <= 0)
+        return;
+
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
     {
         if (xml->hasTagName (apvts.state.getType()))
