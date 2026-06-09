@@ -4,8 +4,6 @@ namespace neseq
 {
 namespace
 {
-// A gain change smaller than this (in dB) is treated as a no-op so we skip the
-// coefficient rebuild. Keeps things lock free and allocation free.
 constexpr float kGainEpsilonDb = 1.0e-3f;
 
 float dbToGain (float db)
@@ -19,13 +17,11 @@ void ThreeBandEQ::prepare (const juce::dsp::ProcessSpec& spec)
     sampleRate = spec.sampleRate;
     chain.prepare (spec);
 
-    // Force a rebuild on the next call to ``update`` by nudging the cached
-    // gains off the default so the epsilon check triggers.
-    currentLowDb  = std::numeric_limits<float>::infinity();
-    currentMidDb  = std::numeric_limits<float>::infinity();
-    currentHighDb = std::numeric_limits<float>::infinity();
+    smoothedLow .reset (sampleRate, smoothingTimeSec);
+    smoothedMid .reset (sampleRate, smoothingTimeSec);
+    smoothedHigh.reset (sampleRate, smoothingTimeSec);
 
-    update (0.0f, 0.0f, 0.0f);
+    snap (0.0f, 0.0f, 0.0f);
 }
 
 void ThreeBandEQ::reset()
@@ -35,26 +31,50 @@ void ThreeBandEQ::reset()
 
 void ThreeBandEQ::update (float lowGainDb, float midGainDb, float highGainDb)
 {
-    if (std::abs (lowGainDb - currentLowDb) > kGainEpsilonDb)
+    smoothedLow .setTargetValue (lowGainDb);
+    smoothedMid .setTargetValue (midGainDb);
+    smoothedHigh.setTargetValue (highGainDb);
+}
+
+void ThreeBandEQ::snap (float lowGainDb, float midGainDb, float highGainDb)
+{
+    smoothedLow .setCurrentAndTargetValue (lowGainDb);
+    smoothedMid .setCurrentAndTargetValue (midGainDb);
+    smoothedHigh.setCurrentAndTargetValue (highGainDb);
+
+    currentLowDb  = std::numeric_limits<float>::infinity();
+    currentMidDb  = std::numeric_limits<float>::infinity();
+    currentHighDb = std::numeric_limits<float>::infinity();
+
+    advanceSmoothersAndRebuild (0);
+}
+
+void ThreeBandEQ::advanceSmoothersAndRebuild (int numSamples)
+{
+    const float lowDb  = smoothedLow .skip (numSamples);
+    const float midDb  = smoothedMid .skip (numSamples);
+    const float highDb = smoothedHigh.skip (numSamples);
+
+    if (std::abs (lowDb - currentLowDb) > kGainEpsilonDb)
     {
-        updateBand (Low, lowGainDb);
-        currentLowDb = lowGainDb;
+        rebuildBand (Low, lowDb);
+        currentLowDb = lowDb;
     }
 
-    if (std::abs (midGainDb - currentMidDb) > kGainEpsilonDb)
+    if (std::abs (midDb - currentMidDb) > kGainEpsilonDb)
     {
-        updateBand (Mid, midGainDb);
-        currentMidDb = midGainDb;
+        rebuildBand (Mid, midDb);
+        currentMidDb = midDb;
     }
 
-    if (std::abs (highGainDb - currentHighDb) > kGainEpsilonDb)
+    if (std::abs (highDb - currentHighDb) > kGainEpsilonDb)
     {
-        updateBand (High, highGainDb);
-        currentHighDb = highGainDb;
+        rebuildBand (High, highDb);
+        currentHighDb = highDb;
     }
 }
 
-void ThreeBandEQ::updateBand (BandIndex band, float gainDb)
+void ThreeBandEQ::rebuildBand (BandIndex band, float gainDb)
 {
     const auto linearGain = dbToGain (gainDb);
 

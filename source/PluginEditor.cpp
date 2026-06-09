@@ -4,8 +4,8 @@ namespace neseq
 {
 namespace
 {
-constexpr int kDefaultWidth  = 480;
-constexpr int kDefaultHeight = 360;
+constexpr int kDefaultWidth  = 560;
+constexpr int kDefaultHeight = 380;
 } // namespace
 
 NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
@@ -24,6 +24,7 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     addAndMakeVisible (lowSlider);
     addAndMakeVisible (midSlider);
     addAndMakeVisible (highSlider);
+    addAndMakeVisible (outputSlider);
 
     addAndMakeVisible (bypassButton);
 
@@ -33,7 +34,7 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     addAndMakeVisible (bypassLabel);
 
     setResizable (true, true);
-    setResizeLimits (360, 280, 1024, 768);
+    setResizeLimits (420, 300, 1024, 768);
     setSize (kDefaultWidth, kDefaultHeight);
 }
 
@@ -49,17 +50,14 @@ void NESEQAudioProcessorEditor::paint (juce::Graphics& g)
 
 void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    // Deep-space backdrop reminiscent of the NES title-screen gradient.
     g.fillAll (NesPalette::black);
 
-    // Scanline-style horizontal pixel pattern to reinforce the CRT / 8-bit look.
     g.setColour (juce::Colour (0xff101018));
     for (int y = 0; y < area.getHeight(); y += 4)
         g.fillRect (area.getX(), y, area.getWidth(), 1);
 
     drawTitleBar (g, area.removeFromTop (46));
 
-    // Chunky pixel frame around the plugin.
     auto frame = getLocalBounds();
     g.setColour (NesPalette::white);
     g.drawRect (frame, 2);
@@ -69,15 +67,13 @@ void NESEQAudioProcessorEditor::drawBackdrop (juce::Graphics& g, juce::Rectangle
 
 void NESEQAudioProcessorEditor::drawTitleBar (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    // Red banner across the top, classic Mario-title-screen vibe.
     g.setColour (NesPalette::red);
     g.fillRect (area);
 
     g.setColour (NesPalette::redShadow);
     g.fillRect (area.removeFromBottom (4));
 
-    // Pixel stars scattered across the banner.
-    juce::Random rng (0x4AE5); // deterministic layout
+    juce::Random rng (0x4AE5);
     g.setColour (NesPalette::yellow);
     for (int i = 0; i < 14; ++i)
     {
@@ -91,9 +87,7 @@ void NESEQAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (8);
 
-    // Title banner
     titleLabel.setBounds (area.removeFromTop (40));
-
     area.removeFromTop (8);
 
     // Bottom control strip: bypass button + label.
@@ -104,11 +98,12 @@ void NESEQAudioProcessorEditor::resized()
     auto buttonBounds = bypassArea.withSizeKeepingCentre (buttonSize, buttonSize);
     bypassButton.setBounds (buttonBounds);
 
-    // Three band sliders evenly across the remainder.
+    // Four band sliders evenly across the remainder.
     auto sliderStrip = area.reduced (8);
-    const auto sliderW = sliderStrip.getWidth() / 3;
-    lowSlider .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
-    midSlider .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
-    highSlider.setBounds (sliderStrip.reduced (6, 0));
+    const auto sliderW = sliderStrip.getWidth() / 4;
+    lowSlider   .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
+    midSlider   .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
+    highSlider  .setBounds (sliderStrip.removeFromLeft (sliderW).reduced (6, 0));
+    outputSlider.setBounds (sliderStrip.reduced (6, 0));
 }
 } // namespace neseq
