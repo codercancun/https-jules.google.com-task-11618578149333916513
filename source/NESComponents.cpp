@@ -198,4 +198,53 @@ void NESAButton::paintButton (juce::Graphics& g,
         g.drawEllipse (bounds, 2.0f);
     }
 }
+
+// =============================================================================
+// NESPresetSelector
+// =============================================================================
+
+NESPresetSelector::NESPresetSelector (juce::AudioProcessor& processor)
+    : proc (processor)
+{
+    label.setText ("PRESET", juce::dontSendNotification);
+    label.setJustificationType (juce::Justification::centredRight);
+    label.setColour (juce::Label::textColourId, NesPalette::yellow);
+    addAndMakeVisible (label);
+
+    combo.setColour (juce::ComboBox::backgroundColourId, NesPalette::darkGrey);
+    combo.setColour (juce::ComboBox::textColourId,       NesPalette::white);
+    combo.setColour (juce::ComboBox::outlineColourId,    NesPalette::grey);
+    combo.setColour (juce::ComboBox::arrowColourId,      NesPalette::yellow);
+
+    for (int i = 0; i < proc.getNumPrograms(); ++i)
+        combo.addItem (proc.getProgramName (i), i + 1);
+
+    syncToProcessor();
+    combo.addListener (this);
+    addAndMakeVisible (combo);
+}
+
+NESPresetSelector::~NESPresetSelector()
+{
+    combo.removeListener (this);
+}
+
+void NESPresetSelector::resized()
+{
+    auto area = getLocalBounds();
+    label.setBounds (area.removeFromLeft (60));
+    area.removeFromLeft (4);
+    combo.setBounds (area);
+}
+
+void NESPresetSelector::syncToProcessor()
+{
+    combo.setSelectedId (proc.getCurrentProgram() + 1, juce::dontSendNotification);
+}
+
+void NESPresetSelector::comboBoxChanged (juce::ComboBox* box)
+{
+    if (box == &combo)
+        proc.setCurrentProgram (combo.getSelectedId() - 1);
+}
 } // namespace neseq

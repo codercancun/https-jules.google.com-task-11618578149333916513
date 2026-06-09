@@ -21,11 +21,13 @@ private:
     NESEQAudioProcessor& audioProcessor;
     NESLookAndFeel lookAndFeel;
 
-    PowerMeterSlider lowSlider  { audioProcessor.getAPVTS(), ParamIDs::lowGain,  "LOW"  };
-    PowerMeterSlider midSlider  { audioProcessor.getAPVTS(), ParamIDs::midGain,  "MID"  };
-    PowerMeterSlider highSlider { audioProcessor.getAPVTS(), ParamIDs::highGain, "HIGH" };
+    PowerMeterSlider lowSlider    { audioProcessor.getAPVTS(), ParamIDs::lowGain,    "LOW"  };
+    PowerMeterSlider midSlider    { audioProcessor.getAPVTS(), ParamIDs::midGain,    "MID"  };
+    PowerMeterSlider highSlider   { audioProcessor.getAPVTS(), ParamIDs::highGain,   "HIGH" };
+    PowerMeterSlider outputSlider { audioProcessor.getAPVTS(), ParamIDs::outputGain, "OUT"  };
 
     NESAButton bypassButton { audioProcessor.getAPVTS(), ParamIDs::bypass };
+    NESPresetSelector presetSelector { audioProcessor };
 
     juce::Label titleLabel;
     juce::Label bypassLabel;

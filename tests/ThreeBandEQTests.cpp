@@ -11,11 +11,8 @@ namespace
 {
 constexpr double kSampleRate = 48000.0;
 constexpr int    kBlockSize  = 512;
-constexpr int    kNumBlocks  = 64; // total = kBlockSize * kNumBlocks samples
+constexpr int    kNumBlocks  = 64;
 
-/** Feed a sine wave through the given EQ and return the linear RMS of the
-    processed signal, measured over the second half of the run so the filter
-    has had time to reach steady state. */
 float measureRms (ThreeBandEQ& eq, float freqHz, float lowDb, float midDb, float highDb)
 {
     juce::dsp::ProcessSpec spec {};
@@ -23,7 +20,7 @@ float measureRms (ThreeBandEQ& eq, float freqHz, float lowDb, float midDb, float
     spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
     spec.numChannels      = 1;
     eq.prepare (spec);
-    eq.update (lowDb, midDb, highDb);
+    eq.snap (lowDb, midDb, highDb);
 
     const double omega = juce::MathConstants<double>::twoPi * freqHz / kSampleRate;
 
@@ -48,8 +45,6 @@ float measureRms (ThreeBandEQ& eq, float freqHz, float lowDb, float midDb, float
         juce::dsp::ProcessContextReplacing<float> ctx (block_);
         eq.process (ctx);
 
-        // Only measure the second half of the run so transient settling
-        // doesn't distort the RMS value.
         if (block >= kNumBlocks / 2)
         {
             for (int i = 0; i < kBlockSize; ++i)
@@ -61,7 +56,6 @@ float measureRms (ThreeBandEQ& eq, float freqHz, float lowDb, float midDb, float
     return static_cast<float> (std::sqrt (sumSq / juce::jmax (1, countedSamples)));
 }
 
-/** RMS of a unit-amplitude sine wave is 1/sqrt(2). */
 constexpr float kUnitSineRms = 0.70710678f;
 
 float measureGainDb (ThreeBandEQ& eq, float freqHz, float lowDb, float midDb, float highDb)
@@ -92,8 +86,6 @@ public:
         beginTest ("low-shelf boost peaks below 200 Hz and leaves 5 kHz alone");
         {
             ThreeBandEQ eq;
-            // Well below the 200 Hz corner the shelf approaches full gain;
-            // at the corner itself a JUCE shelf is ~half the set gain in dB.
             const auto deepLowDb = measureGainDb (eq, 50.0f,   12.0f, 0.0f, 0.0f);
             const auto cornerDb  = measureGainDb (eq, 200.0f,  12.0f, 0.0f, 0.0f);
             const auto highDb    = measureGainDb (eq, 5000.0f, 12.0f, 0.0f, 0.0f);
@@ -144,7 +136,6 @@ public:
 
             expectLessThan (cutDb, -10.0f,
                 "low-shelf @50 Hz with -12 dB low gain should cut close to full");
-            // Shelf cut and boost should be roughly mirror images of 0 dB.
             expectWithinAbsoluteError (boostDb + cutDb, 0.0f, 1.5f,
                 "shelf boost and cut should be approximately symmetric");
         }
@@ -158,10 +149,7 @@ public:
             spec.numChannels      = 1;
             eq.prepare (spec);
 
-            // Repeated identical updates should leave the filter stable and
-            // deterministic. Run a zero-input block and expect zero output
-            // (no denormal surprises, no state corruption).
-            eq.update (3.0f, -3.0f, 6.0f);
+            eq.snap (3.0f, -3.0f, 6.0f);
             eq.update (3.0f, -3.0f, 6.0f);
             eq.update (3.0f, -3.0f, 6.0f);
 
@@ -174,6 +162,42 @@ public:
             for (int i = 0; i < kBlockSize; ++i)
                 expect (std::abs (buffer.getSample (0, i)) < 1.0e-6f,
                     "zero input should produce zero output");
+        }
+
+        beginTest ("smoothing ramps to target over time");
+        {
+            ThreeBandEQ eq;
+            juce::dsp::ProcessSpec spec {};
+            spec.sampleRate       = kSampleRate;
+            spec.maximumBlockSize = static_cast<juce::uint32> (kBlockSize);
+            spec.numChannels      = 1;
+            eq.prepare (spec);
+            eq.snap (0.0f, 0.0f, 0.0f);
+
+            eq.update (12.0f, 0.0f, 0.0f);
+
+            juce::AudioBuffer<float> buffer (1, kBlockSize);
+            const double omega = juce::MathConstants<double>::twoPi * 50.0 / kSampleRate;
+            double phase = 0.0;
+
+            auto* data = buffer.getWritePointer (0);
+            for (int i = 0; i < kBlockSize; ++i)
+            {
+                data[i] = static_cast<float> (std::sin (phase));
+                phase += omega;
+            }
+
+            juce::dsp::AudioBlock<float> block_ (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx (block_);
+            eq.process (ctx);
+
+            float rms = 0.0f;
+            for (int i = 0; i < kBlockSize; ++i)
+                rms += data[i] * data[i];
+            rms = std::sqrt (rms / kBlockSize);
+
+            expect (rms > kUnitSineRms * 0.9f,
+                "after one block of smoothing the signal should still be amplified");
         }
     }
 };

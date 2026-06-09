@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(NES_EQ
-    VERSION 0.1.0
+    VERSION 1.0.0
     LANGUAGES C CXX
     DESCRIPTION "NES-EQ: 8-bit themed 3-band EQ audio plugin"
 )
@@ -54,6 +54,9 @@ target_sources(NES_EQ PRIVATE
     source/PluginEditor.h
     source/ThreeBandEQ.cpp
     source/ThreeBandEQ.h
+    source/BypassCrossfader.cpp
+    source/BypassCrossfader.h
+    source/Presets.h
     source/NESLookAndFeel.cpp
     source/NESLookAndFeel.h
     source/NESComponents.cpp
@@ -104,8 +107,11 @@ if(NES_EQ_BUILD_TESTS)
     target_sources(NES_EQ_Tests PRIVATE
         tests/TestsMain.cpp
         tests/ThreeBandEQTests.cpp
+        tests/BypassCrossfaderTests.cpp
         source/ThreeBandEQ.cpp
         source/ThreeBandEQ.h
+        source/BypassCrossfader.cpp
+        source/BypassCrossfader.h
     )
 
     target_compile_definitions(NES_EQ_Tests PRIVATE
