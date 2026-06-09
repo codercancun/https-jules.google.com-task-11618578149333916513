@@ -5,7 +5,8 @@ namespace neseq
 {
 namespace
 {
-constexpr float kGainRangeDb = 15.0f;
+constexpr float kGainRangeDb   = 15.0f;
+constexpr float kOutputRangeDb = 12.0f;
 } // namespace
 
 NESEQAudioProcessor::NESEQAudioProcessor()
@@ -14,10 +15,17 @@ NESEQAudioProcessor::NESEQAudioProcessor()
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", makeParameterLayout())
 {
-    lowGainParam  = apvts.getRawParameterValue (ParamIDs::lowGain);
-    midGainParam  = apvts.getRawParameterValue (ParamIDs::midGain);
-    highGainParam = apvts.getRawParameterValue (ParamIDs::highGain);
-    bypassParam   = apvts.getRawParameterValue (ParamIDs::bypass);
+    lowGainParam    = apvts.getRawParameterValue (ParamIDs::lowGain);
+    midGainParam    = apvts.getRawParameterValue (ParamIDs::midGain);
+    highGainParam   = apvts.getRawParameterValue (ParamIDs::highGain);
+    outputGainParam = apvts.getRawParameterValue (ParamIDs::outputGain);
+    bypassParam     = apvts.getRawParameterValue (ParamIDs::bypass);
+
+    jassert (lowGainParam    != nullptr);
+    jassert (midGainParam    != nullptr);
+    jassert (highGainParam   != nullptr);
+    jassert (outputGainParam != nullptr);
+    jassert (bypassParam     != nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -29,6 +37,9 @@ NESEQAudioProcessor::makeParameterLayout()
     const auto gainRange = juce::NormalisableRange<float> (
         -kGainRangeDb, kGainRangeDb, 0.01f, 1.0f);
 
+    const auto outputRange = juce::NormalisableRange<float> (
+        -kOutputRangeDb, kOutputRangeDb, 0.01f, 1.0f);
+
     auto gainAttributes = juce::AudioParameterFloatAttributes()
                               .withLabel ("dB")
                               .withStringFromValueFunction (
@@ -37,7 +48,7 @@ NESEQAudioProcessor::makeParameterLayout()
                                   });
 
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-    params.reserve (4);
+    params.reserve (5);
 
     params.push_back (std::make_unique<FloatParam> (
         juce::ParameterID { ParamIDs::lowGain, 1 },
@@ -60,6 +71,13 @@ NESEQAudioProcessor::makeParameterLayout()
         0.0f,
         gainAttributes));
 
+    params.push_back (std::make_unique<FloatParam> (
+        juce::ParameterID { ParamIDs::outputGain, 1 },
+        "Output",
+        outputRange,
+        0.0f,
+        gainAttributes));
+
     params.push_back (std::make_unique<BoolParam> (
         juce::ParameterID { ParamIDs::bypass, 1 },
         "Bypass",
@@ -70,13 +88,19 @@ NESEQAudioProcessor::makeParameterLayout()
 
 void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    jassert (sampleRate > 0.0);
+    jassert (samplesPerBlock > 0);
+
     juce::dsp::ProcessSpec spec {};
     spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
-    spec.numChannels      = 1; // each ThreeBandEQ instance handles one channel
+    spec.numChannels      = 1;
 
     eqLeft.prepare (spec);
     eqRight.prepare (spec);
+
+    bypassCrossfader.prepare (sampleRate, getTotalNumOutputChannels(),
+                              samplesPerBlock);
 }
 
 void NESEQAudioProcessor::releaseResources()
@@ -105,41 +129,73 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const auto totalNumInputChannels  = getTotalNumInputChannels();
     const auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Zero out any output channels beyond the input bus so we don't leak
-    // garbage from earlier processing.
     for (auto ch = totalNumInputChannels; ch < totalNumOutputChannels; ++ch)
         buffer.clear (ch, 0, buffer.getNumSamples());
 
     const bool bypassed = bypassParam != nullptr && bypassParam->load() > 0.5f;
-    if (bypassed)
+    bypassCrossfader.setBypassed (bypassed);
+
+    if (bypassCrossfader.shouldCaptureDry())
+        bypassCrossfader.captureDry (buffer);
+
+    if (bypassCrossfader.shouldRunEffect())
+    {
+        const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
+        const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
+        const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+
+        eqLeft .update (lowDb, midDb, highDb);
+        eqRight.update (lowDb, midDb, highDb);
+
+        if (totalNumInputChannels > 0)
+        {
+            auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
+                                 .getSubsetChannelBlock (0, 1);
+            juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
+            eqLeft.process (ctx);
+        }
+
+        if (totalNumInputChannels > 1)
+        {
+            auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
+                                  .getSubsetChannelBlock (1, 1);
+            juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
+            eqRight.process (ctx);
+        }
+
+        // Apply output gain
+        const float outDb = outputGainParam != nullptr ? outputGainParam->load() : 0.0f;
+        if (std::abs (outDb) > 0.01f)
+        {
+            const auto gain = juce::Decibels::decibelsToGain (outDb);
+            buffer.applyGain (gain);
+        }
+    }
+
+    bypassCrossfader.mix (buffer);
+}
+
+void NESEQAudioProcessor::setCurrentProgram (int index)
+{
+    if (index < 0 || index >= static_cast<int> (kFactoryPresets.size()))
         return;
 
-    const float lowDb  = lowGainParam  != nullptr ? lowGainParam->load()  : 0.0f;
-    const float midDb  = midGainParam  != nullptr ? midGainParam->load()  : 0.0f;
-    const float highDb = highGainParam != nullptr ? highGainParam->load() : 0.0f;
+    currentPreset = index;
+    const auto& preset = kFactoryPresets[static_cast<size_t> (index)];
 
-    eqLeft .update (lowDb, midDb, highDb);
-    eqRight.update (lowDb, midDb, highDb);
+    if (auto* p = apvts.getParameter (ParamIDs::lowGain))
+        p->setValueNotifyingHost (p->convertTo0to1 (preset.lowDb));
+    if (auto* p = apvts.getParameter (ParamIDs::midGain))
+        p->setValueNotifyingHost (p->convertTo0to1 (preset.midDb));
+    if (auto* p = apvts.getParameter (ParamIDs::highGain))
+        p->setValueNotifyingHost (p->convertTo0to1 (preset.highDb));
+}
 
-    const auto numSamples = buffer.getNumSamples();
-
-    if (totalNumInputChannels > 0)
-    {
-        auto leftBlock = juce::dsp::AudioBlock<float> (buffer)
-                             .getSubsetChannelBlock (0, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (leftBlock);
-        eqLeft.process (ctx);
-    }
-
-    if (totalNumInputChannels > 1)
-    {
-        auto rightBlock = juce::dsp::AudioBlock<float> (buffer)
-                              .getSubsetChannelBlock (1, 1);
-        juce::dsp::ProcessContextReplacing<float> ctx (rightBlock);
-        eqRight.process (ctx);
-    }
-
-    juce::ignoreUnused (numSamples);
+const juce::String NESEQAudioProcessor::getProgramName (int index)
+{
+    if (index >= 0 && index < static_cast<int> (kFactoryPresets.size()))
+        return kFactoryPresets[static_cast<size_t> (index)].name;
+    return {};
 }
 
 juce::AudioProcessorEditor* NESEQAudioProcessor::createEditor()
@@ -166,7 +222,6 @@ void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes
 }
 } // namespace neseq
 
-// This is the required entry point for hosts to instantiate the plugin.
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new neseq::NESEQAudioProcessor();
