@@ -1,26 +1,13 @@
+# Build output
 build/
-build-*/
-cmake-build-*/
 
-# CMake
-CMakeCache.txt
-CMakeFiles/
-CMakeScripts/
-cmake_install.cmake
-Makefile
-_deps/
-
-# IDE
-.idea/
+# IDE / editor files
 .vscode/
+.idea/
 *.swp
-*.swo
 *~
-
-# OS
 .DS_Store
-Thumbs.db
 
-# JUCE generated
-JuceLibraryCode/
-JuceHeader.h
+# Compiled plugin bundles (keep in build/)
+*.vst3
+*.component

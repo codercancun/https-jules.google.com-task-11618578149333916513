@@ -15,16 +15,19 @@ red "A" button for bypass.
 - **Parameter smoothing** (20 ms linear ramp) eliminates zipper noise
   during slider automation.
 - **Click-free bypass** crossfade (50 ms) — no pops when toggling.
-- **Factory presets**: Flat, Vocal Boost, Bass Heavy, Bright, Warm, Scoop.
+- **Factory presets**: Flat, Vocal Boost, Bass Heavy, Bright, Warm, Scoop —
+  selectable from the in-plugin dropdown or via the DAW's preset browser.
 - Retro NES-style pixel-art UI (classic 2C02 palette).
 - Power-meter style vertical sliders with lit LED segments.
+- In-plugin preset selector ComboBox.
 - "A" button bypass toggle.
 - Real-time safe audio processing:
     - No heap allocations on the audio thread.
     - Coefficients are only rebuilt when a band's smoothed gain changes.
     - Sub-block processing (32 samples) for smooth parameter ramps.
     - Uses `juce::ScopedNoDenormals` in `processBlock`.
-- Full plugin state save/restore via `AudioProcessorValueTreeState`.
+- Full plugin state save/restore (including current preset) via
+  `AudioProcessorValueTreeState`.
 - Stereo and mono bus layouts supported.
 - Multi-format build targets:
     - **VST3** on every platform
@@ -42,7 +45,7 @@ source/
     BypassCrossfader.{h,cpp} Click-free wet/dry crossfade helper
     Presets.h               Factory preset definitions
     NESLookAndFeel.{h,cpp}  Palette + typeface + basic label drawing
-    NESComponents.{h,cpp}   PowerMeterSlider and NESAButton custom components
+    NESComponents.{h,cpp}   PowerMeterSlider, NESAButton, NESPresetSelector
 tests/
     TestsMain.cpp           Console entry point that runs juce::UnitTestRunner
     ThreeBandEQTests.cpp    Frequency-response and smoothing tests

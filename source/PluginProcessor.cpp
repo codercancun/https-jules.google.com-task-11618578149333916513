@@ -207,6 +207,8 @@ void NESEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto state = apvts.copyState(); state.isValid())
     {
+        state.setProperty ("currentPreset", currentPreset, nullptr);
+
         if (auto xml = state.createXml())
             copyXmlToBinary (*xml, destData);
     }
@@ -217,7 +219,11 @@ void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
     {
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            currentPreset = static_cast<int> (tree.getProperty ("currentPreset", 0));
+            apvts.replaceState (tree);
+        }
     }
 }
 } // namespace neseq

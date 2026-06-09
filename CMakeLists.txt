@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(NES_EQ
-    VERSION 0.1.0
+    VERSION 1.0.0
     LANGUAGES C CXX
     DESCRIPTION "NES-EQ: 8-bit themed 3-band EQ audio plugin"
 )

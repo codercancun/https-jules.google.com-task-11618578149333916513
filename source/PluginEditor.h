@@ -27,6 +27,7 @@ private:
     PowerMeterSlider outputSlider { audioProcessor.getAPVTS(), ParamIDs::outputGain, "OUT"  };
 
     NESAButton bypassButton { audioProcessor.getAPVTS(), ParamIDs::bypass };
+    NESPresetSelector presetSelector { audioProcessor };
 
     juce::Label titleLabel;
     juce::Label bypassLabel;

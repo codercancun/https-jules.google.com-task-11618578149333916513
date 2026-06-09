@@ -59,4 +59,29 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NESAButton)
 };
+
+/**
+    An NES-styled preset selector that wraps a juce::ComboBox and drives
+    the host program change API on selection.
+*/
+class NESPresetSelector final : public juce::Component,
+                                private juce::ComboBox::Listener
+{
+public:
+    explicit NESPresetSelector (juce::AudioProcessor& processor);
+    ~NESPresetSelector() override;
+
+    void resized() override;
+
+    void syncToProcessor();
+
+private:
+    juce::AudioProcessor& proc;
+    juce::Label  label;
+    juce::ComboBox combo;
+
+    void comboBoxChanged (juce::ComboBox* box) override;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NESPresetSelector)
+};
 } // namespace neseq

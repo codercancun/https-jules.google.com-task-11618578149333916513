@@ -5,7 +5,7 @@ namespace neseq
 namespace
 {
 constexpr int kDefaultWidth  = 560;
-constexpr int kDefaultHeight = 380;
+constexpr int kDefaultHeight = 420;
 } // namespace
 
 NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
@@ -27,6 +27,7 @@ NESEQAudioProcessorEditor::NESEQAudioProcessorEditor (NESEQAudioProcessor& p)
     addAndMakeVisible (outputSlider);
 
     addAndMakeVisible (bypassButton);
+    addAndMakeVisible (presetSelector);
 
     bypassLabel.setText ("BYPASS", juce::dontSendNotification);
     bypassLabel.setJustificationType (juce::Justification::centred);
@@ -89,6 +90,10 @@ void NESEQAudioProcessorEditor::resized()
 
     titleLabel.setBounds (area.removeFromTop (40));
     area.removeFromTop (8);
+
+    // Preset selector strip.
+    presetSelector.setBounds (area.removeFromBottom (28).reduced (8, 0));
+    area.removeFromBottom (4);
 
     // Bottom control strip: bypass button + label.
     auto bottom = area.removeFromBottom (80);
