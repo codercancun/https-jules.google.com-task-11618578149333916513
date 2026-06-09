@@ -22,9 +22,10 @@ red "A" button for bypass.
 - In-plugin preset selector ComboBox.
 - "A" button bypass toggle.
 - Real-time safe audio processing:
-    - No heap allocations on the audio thread.
-    - Coefficients are only rebuilt when a band's smoothed gain changes.
+    - Coefficients are only rebuilt when a band's smoothed gain changes
+      (small JUCE-internal allocation on rebuild; no allocation at steady state).
     - Sub-block processing (32 samples) for smooth parameter ramps.
+    - Output gain is smoothed (20 ms linear ramp) — no clicks on automation.
     - Uses `juce::ScopedNoDenormals` in `processBlock`.
 - Full plugin state save/restore (including current preset) via
   `AudioProcessorValueTreeState`.

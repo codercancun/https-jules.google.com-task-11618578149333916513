@@ -101,6 +101,9 @@ void NESEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     bypassCrossfader.prepare (sampleRate, getTotalNumOutputChannels(),
                               samplesPerBlock);
+
+    smoothedOutputGain.reset (sampleRate, 0.02);
+    smoothedOutputGain.setCurrentAndTargetValue (1.0f);
 }
 
 void NESEQAudioProcessor::releaseResources()
@@ -163,12 +166,27 @@ void NESEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             eqRight.process (ctx);
         }
 
-        // Apply output gain
+        // Apply smoothed output gain
         const float outDb = outputGainParam != nullptr ? outputGainParam->load() : 0.0f;
-        if (std::abs (outDb) > 0.01f)
+        smoothedOutputGain.setTargetValue (juce::Decibels::decibelsToGain (outDb));
+
+        if (smoothedOutputGain.isSmoothing())
         {
-            const auto gain = juce::Decibels::decibelsToGain (outDb);
-            buffer.applyGain (gain);
+            const auto numSamples = buffer.getNumSamples();
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            {
+                auto* data = buffer.getWritePointer (ch);
+                auto gain = smoothedOutputGain;
+                for (int i = 0; i < numSamples; ++i)
+                    data[i] *= gain.getNextValue();
+            }
+            smoothedOutputGain.skip (numSamples);
+        }
+        else
+        {
+            const auto gain = smoothedOutputGain.getCurrentValue();
+            if (std::abs (gain - 1.0f) > 1.0e-6f)
+                buffer.applyGain (gain);
         }
     }
 
@@ -180,7 +198,7 @@ void NESEQAudioProcessor::setCurrentProgram (int index)
     if (index < 0 || index >= static_cast<int> (kFactoryPresets.size()))
         return;
 
-    currentPreset = index;
+    currentPreset.store (index);
     const auto& preset = kFactoryPresets[static_cast<size_t> (index)];
 
     if (auto* p = apvts.getParameter (ParamIDs::lowGain))
@@ -207,7 +225,7 @@ void NESEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto state = apvts.copyState(); state.isValid())
     {
-        state.setProperty ("currentPreset", currentPreset, nullptr);
+        state.setProperty ("currentPreset", currentPreset.load(), nullptr);
 
         if (auto xml = state.createXml())
             copyXmlToBinary (*xml, destData);
@@ -221,7 +239,7 @@ void NESEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes
         if (xml->hasTagName (apvts.state.getType()))
         {
             auto tree = juce::ValueTree::fromXml (*xml);
-            currentPreset = static_cast<int> (tree.getProperty ("currentPreset", 0));
+            currentPreset.store (static_cast<int> (tree.getProperty ("currentPreset", 0)));
             apvts.replaceState (tree);
         }
     }

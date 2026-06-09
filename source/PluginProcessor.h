@@ -45,7 +45,7 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override { return static_cast<int> (kFactoryPresets.size()); }
-    int getCurrentProgram() override { return currentPreset; }
+    int getCurrentProgram() override { return currentPreset.load(); }
     void setCurrentProgram (int index) override;
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -70,7 +70,9 @@ private:
     std::atomic<float>* outputGainParam = nullptr;
     std::atomic<float>* bypassParam     = nullptr;
 
-    int currentPreset = 0;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedOutputGain { 1.0f };
+
+    std::atomic<int> currentPreset { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NESEQAudioProcessor)
 };
